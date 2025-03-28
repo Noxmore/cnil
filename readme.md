@@ -1,0 +1,1 @@
+Funny c23 utility library for myself, nothing special.
