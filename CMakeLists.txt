@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.31)
-project(noost C)
+project(cnil C)
 
 set(CMAKE_C_STANDARD 23)
 
@@ -8,3 +8,4 @@ file(GLOB SRC_FILES ./nil/*.c)
 add_library(nil STATIC ${SRC_FILES})
 
 add_executable(tests test.c)
+target_link_libraries(tests nil)
