@@ -1,9 +1,18 @@
-#include <stdio.h>
-
 #define CNIL_TEST
 
-#include "nil/vec.h"
 #include "nil/bserial.h"
+
+typedef struct Foo {
+	i32 bap;
+	float bar;
+	Vec(u16) baz;
+} Foo;
+
+BIN_SERIAL(Foo,
+	i32, bap,
+	float, bar,
+	Vec$u16, baz
+)
 
 int main() {
 	Foo foo = {
@@ -11,6 +20,8 @@ int main() {
 		.bar = 6.36f,
 		.baz = {0},
 	};
+	vecPush(&foo.baz, 77);
+	vecPush(&foo.baz, 79);
 
 	FILE* file = fopen("out.bin", "w");
 	if (file == nullptr) {
@@ -46,4 +57,8 @@ int main() {
 	} else {
 		printf("Failed! Deserialized foo does not match\n");
 	}
+	vecDrop(&foo.baz);
+	vecDrop(&foo2.baz);
+
+	return 0;
 }

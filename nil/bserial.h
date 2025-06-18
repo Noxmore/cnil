@@ -1,58 +1,13 @@
 #pragma once
 
 #include <endian.h>
+#include <stdio.h>
 
 #include "vec.h"
 
-/*typedef enum BinSerializeTarget {
-	BIN_SERIALIZER_BUFFER,
-	BIN_SERIALIZER_MEMORY,
-} BinSerializeTarget;
+/*typedef struct Serializer {
 
-typedef struct BinSerializer {
-	BinSerializeTarget target;
-	union {
-		Vec(u8) buf;
-		FILE file;
-	};
-} BinSerializer;*/
-
-/*static void binSerializeBytes(BinSerializer* s, const void* src, const usize num) {
-	void* dst = internal_vecReserveItem((ErasedVec*)(&s->buf), num);
-	memcpy(dst, src, num);
-}*/
-
-/*inline usize i8_binSerializeSize() {
-	return 1;
-}
-inline void i8_binSerialize(BinSerializer* s, const i8 v) {
-	vecPush(&s->buf, v);
-}*/
-
-/*inline BinSerializer binSerializerNew() {
-	BinSerializer s = {0};
-
-	i8_binSerialize(&s, BYTE_ORDER == BIG_ENDIAN);
-
-	return s;
-}*/
-
-/*inline void binSerializerDrop(BinSerializer* s) {
-	vecDrop(&s->buf);
-}*/
-
-typedef struct Foo {
-	i32 bap;
-	float bar;
-	Vec(u16) baz;
-} Foo;
-
-/*typedef void (*SerializeFunction)(FILE*, const void*);
-typedef bool (*DeserializeFunction)(FILE*, void*);
-
-typedef struct SerialFunctions {
-
-} SerialFunctions;*/
+} Serializer;*/
 
 #define binSerialize(T) T##_binSerialize
 #define binDeserialize(T) T##_binDeserialize
@@ -66,45 +21,56 @@ typedef struct SerialFunctions {
 	static bool binDeserialize(T)(FILE* src, T* dst) { \
 		u16 size; \
 		if (!binDeserialize(u16)(src, &size)) return false; \
-		T v = {0}; \
 		DESERIALIZE \
 		return true; \
 	} \
-	// BIN_SERIAL_DEFINE_CONTAINERS(T)
+	BIN_SERIAL_DEFINE_CONTAINERS(T)
 // TODO: defaults, error propagation, and size limiting
 
-#define BIN_SERIAL_INTERNAL_GET_OVERRIDE(_1, _1b, _2, _2b, _3, _3b, pad, NAME, ...) NAME
+#define BIN_SERIAL_INTERNAL_GET_OVERRIDE(_1, _1b, _2, _2b, _3, _3b, _4, _4b, _5, _5b, _6, _6b, pad, NAME, ...) NAME
+#define BIN_SERIAL_INT_SE(T, F) binSerialize(T)(dst, &v->F);
+#define BIN_SERIAL_INT_DE(T, F) if (!binDeserialize(T)(src, &dst->F)) return false;
 
-#define BIN_SERIAL(T, ...) BIN_SERIAL_INTERNAL_GET_OVERRIDE(__VA_ARGS__, BIN_SERIAL_3, invalid3, BIN_SERIAL2, invalid2, BIN_SERIAL1, invalid1)(T, __VA_ARGS__)
+#define BIN_SERIAL(T, ...) BIN_SERIAL_INTERNAL_GET_OVERRIDE(__VA_ARGS__, invalid6, BIN_SERIAL6, invalid5, BIN_SERIAL5, invalid4, BIN_SERIAL4, invalid3, BIN_SERIAL3, invalid2, BIN_SERIAL2, invalid1, BIN_SERIAL1)(T, __VA_ARGS__)
 
 #define BIN_SERIAL1(T, T0, F0) BIN_SERIAL_INTERNAL(T, \
-	binSerialize(T0)(dst, &v->F0);,\
-	if (!binDeserialize(T0)(src, &v.F0)) return false;\
+	binSerialize(T0)(dst, &v->F0);, \
+	if (!binDeserialize(T0)(src, &v.F0)) return false; \
 )
 
-#define BIN_SERIAL2(T, T0, F0, T1, F1) BIN_SERIAL_INTERNAL(T, \
-	{ \
-		binSerialize(T0)(dst, &v->F0); \
-		binSerialize(T1)(dst, &v->F1); \
-	}, \
-	{ \
-		if (!binDeserialize(T0)(src, &v.F0)) return false; \
-		if (!binDeserialize(T1)(src, &v.F1)) return false; \
-	} \
+#define BIN_SERIAL2(T, T1, F1, T2, F2) BIN_SERIAL_INTERNAL(T, \
+	{ BIN_SERIAL_INT_SE(T1,F1) BIN_SERIAL_INT_SE(T2,F2) }, \
+	{ BIN_SERIAL_INT_DE(T1,F1) BIN_SERIAL_INT_DE(T2,F2) } \
+)
+#define BIN_SERIAL3(T, T1, F1, T2, F2, T3, F3) BIN_SERIAL_INTERNAL(T, \
+	{ BIN_SERIAL_INT_SE(T1,F1) BIN_SERIAL_INT_SE(T2,F2) BIN_SERIAL_INT_SE(T3,F3) }, \
+	{ BIN_SERIAL_INT_DE(T1,F1) BIN_SERIAL_INT_DE(T2,F2) BIN_SERIAL_INT_DE(T3,F3) } \
+)
+#define BIN_SERIAL4(T, T1, F1, T2, F2, T3, F3, T4, F4) BIN_SERIAL_INTERNAL(T, \
+	{ BIN_SERIAL_INT_SE(T1,F1) BIN_SERIAL_INT_SE(T2,F2) BIN_SERIAL_INT_SE(T3,F3) BIN_SERIAL_INT_SE(T4,F4) }, \
+	{ BIN_SERIAL_INT_DE(T1,F1) BIN_SERIAL_INT_DE(T2,F2) BIN_SERIAL_INT_DE(T3,F3) BIN_SERIAL_INT_DE(T4,F4) } \
+)
+#define BIN_SERIAL5(T, T1, F1, T2, F2, T3, F3, T4, F4, T5, F5) BIN_SERIAL_INTERNAL(T, \
+	{ BIN_SERIAL_INT_SE(T1,F1) BIN_SERIAL_INT_SE(T2,F2) BIN_SERIAL_INT_SE(T3,F3) BIN_SERIAL_INT_SE(T4,F4) BIN_SERIAL_INT_SE(T5,F5) }, \
+	{ BIN_SERIAL_INT_DE(T1,F1) BIN_SERIAL_INT_DE(T2,F2) BIN_SERIAL_INT_DE(T3,F3) BIN_SERIAL_INT_DE(T4,F4) BIN_SERIAL_INT_DE(T5,F5) } \
+)
+#define BIN_SERIAL6(T, T1, F1, T2, F2, T3, F3, T4, F4, T5, F5, T6, F6) BIN_SERIAL_INTERNAL(T, \
+	{ BIN_SERIAL_INT_SE(T1,F1) BIN_SERIAL_INT_SE(T2,F2) BIN_SERIAL_INT_SE(T3,F3) BIN_SERIAL_INT_SE(T4,F4) BIN_SERIAL_INT_SE(T5,F5) BIN_SERIAL_INT_SE(T6,F6) }, \
+	{ BIN_SERIAL_INT_DE(T1,F1) BIN_SERIAL_INT_DE(T2,F2) BIN_SERIAL_INT_DE(T3,F3) BIN_SERIAL_INT_DE(T4,F4) BIN_SERIAL_INT_DE(T5,F5) BIN_SERIAL_INT_DE(T6,F6) } \
 )
 
 
 // #define BIN_SERIAL_FIELD(T, FIELD) (T)(&v->FIELD)
 
 #define BIN_SERIAL_DEFINE_CONTAINERS(T) \
-	static void binSerialize(Vec$##T)(FILE* dst, const Vec(T)* v) { for (usize i = 0; i < v->len; i++) binSerialize(T)(dst, &v->data[i]); } \
+	static void binSerialize(Vec$##T)(FILE* dst, const Vec(T)* v) { binSerialize(usize)(dst, &v->len); for (usize i = 0; i < v->len; i++) binSerialize(T)(dst, &v->data[i]); } \
 	static inline void binSerialize(Box$##T)(FILE* dst, const T** v) { binSerialize(T)(dst, *v); } \
 	static bool binDeserialize(Vec$##T)(FILE* src, Vec(T)* dst) { \
-		if (!binDeserialize(usize)(src, &dst->len)) return false; \
-		dst->cap = dst->len; \
-		dst->data = nullptr; \
-		vecReserve(dst, dst->len); \
-		for (usize i = 0; i < dst->len; i++) \
+		usize count; \
+		if (!binDeserialize(usize)(src, &count)) return false; \
+		*dst = (struct Vec$##T){0}; \
+		vecReserve(dst, count); \
+		for (usize i = 0; i < count; i++) \
 			if (!binDeserialize(T)(src, vecReserveItem(dst))) return false; \
 		return true; \
 	} \
@@ -130,21 +96,3 @@ BIN_SERIAL_STABLE_SIMPLE(u64)
 
 BIN_SERIAL_STABLE_SIMPLE(float)
 BIN_SERIAL_STABLE_SIMPLE(double)
-
-// BIN_SERIAL_STABLE_SIMPLE(Foo)
-
-BIN_SERIAL(Foo,
-	i32, bap,
-	float, bar,
-	// Vec$u16, baz,
-)
-
-void fooTest(FILE* dst, const Foo* v) {
-	// _GET_OVERRIDE(a, b, o3, o2, o0);
-	u16 size = sizeof(Foo);
-	fwrite(&size, sizeof(u16), 1, dst);
-
-	binSerialize(i32)(dst, &v->bap);
-	binSerialize(float)(dst, &v->bar);
-	binSerialize(Vec$u16)(dst, &v->baz);
-}
