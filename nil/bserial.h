@@ -5,9 +5,14 @@
 
 #include "vec.h"
 
-/*typedef struct Serializer {
+// We need controls to serialize
+// - Sequence
+// - Object
+// - Map
 
-} Serializer;*/
+typedef struct Serializer {
+	
+} Serializer;
 
 #define binSerialize(T) T##_binSerialize
 #define binDeserialize(T) T##_binDeserialize
@@ -60,8 +65,6 @@
 )
 
 
-// #define BIN_SERIAL_FIELD(T, FIELD) (T)(&v->FIELD)
-
 #define BIN_SERIAL_DEFINE_CONTAINERS(T) \
 	static void binSerialize(Vec$##T)(FILE* dst, const Vec(T)* v) { binSerialize(usize)(dst, &v->len); for (usize i = 0; i < v->len; i++) binSerialize(T)(dst, &v->data[i]); } \
 	static inline void binSerialize(Box$##T)(FILE* dst, const T** v) { binSerialize(T)(dst, *v); } \
@@ -96,3 +99,5 @@ BIN_SERIAL_STABLE_SIMPLE(u64)
 
 BIN_SERIAL_STABLE_SIMPLE(float)
 BIN_SERIAL_STABLE_SIMPLE(double)
+
+BIN_SERIAL_STABLE_SIMPLE(char)
