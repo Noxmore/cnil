@@ -1,8 +1,8 @@
 #include "vec.h"
-#include <malloc.h>
+#include "allocator.h"
 
 void internal_vecDrop(ErasedVec* arr) {
-	if (arr->data != nullptr) free(arr->data);
+	if (arr->data != nullptr) nil_free(arr->data);
 	memset(arr, 0, sizeof(ErasedVec));
 }
 
@@ -17,12 +17,12 @@ void* internal_vecReserveItem(ErasedVec* arr, usize itemSize) {
 }
 
 void internal_vecReallocate(ErasedVec* arr, usize itemSize, usize newCap) {
-	void* newData = malloc(newCap * itemSize);
+	void* newData = nil_alloc(newCap * itemSize);
 
 	if (arr->data != nullptr) {
 		memcpy(newData, arr->data, arr->len * itemSize);
 
-		free(arr->data);
+		nil_free(arr->data);
 	}
 
 	arr->cap = newCap;
@@ -40,10 +40,10 @@ void internal_vecPop(ErasedVec* arr, usize itemSize, void* dst) {
 
 void internal_vecCopyFrom(ErasedVec* arr, usize itemSize, void* src, usize count) {
 	if (arr->cap < count) {
-		void* newData = malloc(count * itemSize);
+		void* newData = nil_alloc(count * itemSize);
 
 		if (arr->data != nullptr) {
-			free(arr->data);
+			nil_free(arr->data);
 		}
 
 		arr->cap = count;
@@ -58,25 +58,6 @@ void internal_vecCopyFrom(ErasedVec* arr, usize itemSize, void* src, usize count
 	return arrayContains(arr->data, arr->len, itemSize, value);
 }*/
 
-
-string strNew(const char* str) {
-	usize len = strlen(str);
-	usize cap = len + 1; // Account for the null-terminator.
-
-	char* data = malloc(cap);
-	memcpy(data, str, cap);
-
-	return (string){
-		.data = data,
-		.len = len,
-		.cap = cap,
-	};
-}
-
-void strDrop(string* str) {
-	free(str->data);
-	*str = (string){0};
-}
 
 void* internal_slottedVecReserveSlot(ErasedVec* arr, usize slotSize, usize generationOffset) {
 //	usize slotSize = sizeof(bool) + slotSize + sizeof(usize);

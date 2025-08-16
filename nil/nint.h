@@ -1,19 +1,11 @@
 #pragma once
 
-#include <stddef.h>
-#include <stdint.h>
-
-typedef uint8_t u8;
-typedef uint16_t u16;
-typedef uint32_t u32;
-typedef uint64_t u64;
-typedef size_t usize;
-typedef int8_t i8;
-typedef int16_t i16;
-typedef int32_t i32;
-typedef int64_t i64;
-
-// TODO: This is so we don't have to include stdio, should we do this?
-#ifdef __ssize_t_defined
-typedef ssize_t isize;
-#endif
+typedef __UINT8_TYPE__ u8;
+typedef __UINT16_TYPE__ u16;
+typedef __UINT32_TYPE__ u32;
+typedef __UINT64_TYPE__ u64;
+typedef __SIZE_TYPE__ usize;
+typedef __INT8_TYPE__ s8;
+typedef __INT16_TYPE__ s16;
+typedef __INT32_TYPE__ s32;
+typedef __INT64_TYPE__ s64;

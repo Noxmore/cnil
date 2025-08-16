@@ -41,18 +41,6 @@ void internal_vecPop(ErasedVec* arr, usize itemSize, void* dst);
 void internal_vecCopyFrom(ErasedVec* arr, usize itemSize, void* src, usize count);
 bool internal_vecContains(ErasedVec* arr, usize itemSize, void* value);
 
-// Heap-allocated growable string type. Interface with like a vector.
-typedef struct string {
-	/// A null terminated c string.
-	char* data;
-	usize len;
-	usize cap;
-} string;
-
-// Creates a string via a null terminated C string.
-string strNew(const char* str);
-void strDrop(string* str);
-
 /*static inline void stringPrintDebug(string* str) {
 	printf("data: %s, len: %lu, cap: %lu\n", str->data, str->len, str->cap);
 }*/
