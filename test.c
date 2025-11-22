@@ -1,8 +1,9 @@
 #define CNIL_TEST
 
+#include "nil/panic.h"
 #include "nil/slice.h"
 #include "nil/string.h"
-#include "nil/codec.h"
+#include "nil/type_info.h"
 #include "nil/vec_p.h"
 
 int testing() {
@@ -60,12 +61,12 @@ ENUM_CODEC(entity_render_type,
 	entity_render_type_transparent,
 )
 
-struct entity_render {
+typedef struct entity_render {
 	enum entity_render_type type;
 	str model_path;
 	float scale;
 	u16 index;
-};
+} entity_render;
 
 DEFINE_CODEC(entity_render) {
 	.type = codec_struct,
@@ -83,6 +84,8 @@ DEFINE_CODEC(entity_render) {
 	},
 };
 
+// typedef struct
+
 /*STRUCT_CODEC(entity_render,
 	(u16, index),
 )*/
@@ -94,9 +97,20 @@ DEFINE_CODEC(entity_render) {
 	(u16, index),
 )*/
 
-/*struct component_storage {
-	VecAnon(struct entity_render) entity_render;
-};*/
+typedef usize entity_id;
+
+typedef vec(struct pool_node$entity_render { struct pool_node$entity_render* prev; struct pool_node$entity_render* next; entity_render value }) pool$entity_render;
+
+typedef struct entity_storage {
+	pool$entity_render entity_renders;
+
+	usize entities;
+} entity_storage;
+
+
+entity_id entity_spawn(entity_storage* storage) {
+	struct pool$entity_render {  };
+}
 
 struct entity;
 
@@ -125,6 +139,9 @@ void boopity(void** hello) {
 }
 
 int main() {
+	// struct { int bap; } we = {2};
+	// we = (auto){ 5 };
+
 	struct entity_render foo = {
 		.type = entity_render_type_transparent,
 		.model_path = "This is a thing!",
@@ -134,6 +151,8 @@ int main() {
 
 
 	debug_with_codec(&foo, &entity_render_$_codec);
+
+	panic("Hello there!");
 
 	vec(s32) list = nullptr;
 
