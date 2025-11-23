@@ -84,7 +84,7 @@ static void write_parsed_type(FILE* file, const type_info_builder* type, const u
 					write_parsed_type(file, field->anon_type, depth + 1);
 					fprintf(file, ", ");
 				} else {
-					fprintf(file, "type_info_of(%s), ", field->field_type.data);
+					fprintf(file, "&NIL_TYPE_INFO_NAME(%s), ", field->field_type.data);
 				}
 				fprintf(file, ".struct_offset = __builtin_offsetof(%s %s, %s), ", type_namespace, type->name.data, field->name.data);
 				fprintf(file, ".is_pointer = %s, ", field->is_pointer ? "true" : "false");

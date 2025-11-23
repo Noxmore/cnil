@@ -10,14 +10,14 @@ typedef struct string {
 	usize len;
 	usize cap;
 } string;
-EXPORT_TYPE(string)
+DECLARE_TYPE_INFO(string)
 
 // String slice.
 typedef struct str {
 	const char* data;
 	usize len;
 } str;
-EXPORT_TYPE(str)
+DECLARE_TYPE_INFO(str)
 
 // Creates a string via a null terminated C string.
 string string_new(const char* str);

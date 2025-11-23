@@ -35,6 +35,7 @@ function(reflect_types target)
 		get_filename_component(filename "${header}" NAME_WE)
 		set(out "${CMAKE_CURRENT_BINARY_DIR}/${filename}.reflection.c")
 
+		# If set wrong, this can wipe header files. I don't know why, I really hope this doesn't happen again.
 		set(generator_flags
 			"$$<LIST:TRANSFORM,$<TARGET_PROPERTY:${target},INCLUDE_DIRECTORIES>,PREPEND,-I>"
 			"$$<LIST:TRANSFORM,$<TARGET_PROPERTY:${target},COMPILE_DEFINITIONS>,PREPEND,-D>"
@@ -43,7 +44,7 @@ function(reflect_types target)
 
 		add_custom_command(
 			OUTPUT "${out}"
-			COMMAND $<TARGET_FILE:nil_reflector> -std=c23 ${generator_flags} "${header}" "${out}"
+			COMMAND $<TARGET_FILE:nil_reflector> -std=c23 -w ${generator_flags} "${header}" "${out}"
 			DEPENDS "${header}" nil_reflector
 			COMMENT "Reflecting ${header} -> ${out}"
 			COMMAND_EXPAND_LISTS
@@ -54,6 +55,10 @@ function(reflect_types target)
 	endforeach()
 
 	target_sources(${target} PRIVATE ${generated_sources})
+
+	# TODO: Should we have this? I think this stops all attribute-related warnings, not just unused annotations?
+	# TODO: Putting this here causes the generators to break. What the fuck.
+#	target_compile_options(${target} PRIVATE -Wno-attributes)
 endfunction()
 
 #	add_library(${reflected_target} OBJECT ${generated_sources})

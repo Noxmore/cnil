@@ -30,7 +30,7 @@ static enum type_info_kind cursor_kind_to_type_info_kind(const enum CXCursorKind
 	}
 }
 
-static bool parse_ctx_contains_type(const reflect_ctx* ctx, CXCursor cursor) {
+/*static bool parse_ctx_contains_type(const reflect_ctx* ctx, CXCursor cursor) {
 	for (usize i = 0; i < ctx->types.len; i++) {
 		const type_info_builder* type = &ctx->types.data[i];
 		if (is_display_name_eq(cursor, type->name.data) && cursor_kind_to_type_info_kind(clang_getCursorKind(cursor)) == type->kind)
@@ -38,7 +38,7 @@ static bool parse_ctx_contains_type(const reflect_ctx* ctx, CXCursor cursor) {
 	}
 
 	return false;
-}
+}*/
 
 // Takes ownership of `s`, disposing it in the process.
 static string convert_str(CXString s) {
@@ -84,7 +84,7 @@ static enum CXChildVisitResult reflect_type(CXCursor cursor, CXCursor parent, CX
 	const enum CXCursorKind kind = clang_getCursorKind(cursor);
 
 	if (kind == CXCursor_AnnotateAttr) {
-		if (is_display_name_eq(cursor, NIL_ANNOTATION_REFLECT))
+		if (is_display_name_eq(cursor, NIL_ANNOTATION_GENERATE_REFLECTION))
 			return CXChildVisit_Continue;
 
 		vec_push(&type->annotations, cursor_display_name(cursor));
@@ -103,6 +103,8 @@ static enum CXChildVisitResult reflect_type(CXCursor cursor, CXCursor parent, CX
 
 		if (field_type.kind == CXType_Pointer)
 			field_type = clang_getPointeeType(field_type);
+		// field_type before elaborations/type tags are removed.
+		const CXType possibly_elaborated_field_type = field_type;
 		if (field_type.kind == CXType_Elaborated)
 			field_type = clang_Type_getNamedType(field_type);
 		if (field_type.kind == CXType_Invalid) {
@@ -122,10 +124,16 @@ static enum CXChildVisitResult reflect_type(CXCursor cursor, CXCursor parent, CX
 
 			field.anon_type = sub_type;
 		} else {
-			if (field_type.kind == CXType_Record || field_type.kind == CXType_Enum)
-				field.field_type = cursor_spelling(clang_getTypeDeclaration(field_type));
-			else
-				field.field_type = convert_str(clang_getTypeSpelling(field_type));
+			field.field_type = convert_str(clang_getTypeSpelling(field_type));
+			if (field_type.kind == CXType_Record || field_type.kind == CXType_Enum) {
+				// field.field_type = cursor_spelling(clang_getTypeDeclaration(field_type));
+				// Replace spaces with commas for the macro to handle elaborated types.
+				for (usize i = 0; i < field.field_type.len; i++) {
+					if (field.field_type.data[i] == ' ')
+						field.field_type.data[i] = ',';
+				}
+			} /*else {
+			}*/
 			// field.field_type = convert_str(clang_getTypeSpelling(field_type));
 		}
 
@@ -157,7 +165,7 @@ static enum CXChildVisitResult reflect_type(CXCursor cursor, CXCursor parent, CX
 }
 
 static enum CXChildVisitResult is_marked_for_reflection(CXCursor cursor, CXCursor parent, CXClientData client_data) {
-	if (clang_getCursorKind(cursor) == CXCursor_AnnotateAttr && is_display_name_eq(cursor, NIL_ANNOTATION_REFLECT)) {
+	if (clang_getCursorKind(cursor) == CXCursor_AnnotateAttr && is_display_name_eq(cursor, NIL_ANNOTATION_GENERATE_REFLECTION)) {
 		*(bool*)client_data = true;
 		return CXChildVisit_Break;
 	}
@@ -169,9 +177,8 @@ static enum CXChildVisitResult search_for_reflected_types(CXCursor cursor, CXCur
 	// clang_getCursor
 	// Allocate a CXString representing the name of the current cursor
 
-	const enum CXCursorKind kind = clang_getCursorKind(cursor);
 
-	if (kind == CXCursor_StructDecl || kind == CXCursor_EnumDecl || kind == CXCursor_UnionDecl) {
+	/*if (kind == CXCursor_StructDecl || kind == CXCursor_EnumDecl || kind == CXCursor_UnionDecl) {
 		bool should_be_reflected = false;
 		clang_visitChildren(cursor, is_marked_for_reflection, &should_be_reflected);
 
@@ -186,6 +193,34 @@ static enum CXChildVisitResult search_for_reflected_types(CXCursor cursor, CXCur
 			builder.kind = cursor_kind_to_type_info_kind(kind);
 			builder.name = cursor_display_name(cursor);
 			clang_visitChildren(cursor, reflect_type, &builder);
+
+			vec_push(&ctx->types, builder);
+		}
+
+		return CXChildVisit_Continue;
+	}*/
+	if (clang_getCursorKind(cursor) == CXCursor_TypedefDecl) {
+		bool should_be_reflected = false;
+		clang_visitChildren(cursor, is_marked_for_reflection, &should_be_reflected);
+
+		if (should_be_reflected) {
+			// debug_display_name(current_cursor);
+			CXCursor type_cursor = cursor;
+			// Trace back through all layers of typedefs.
+			while (clang_getCursorKind(type_cursor) == CXCursor_TypedefDecl)
+				type_cursor = clang_getTypeDeclaration(clang_getTypedefDeclUnderlyingType(type_cursor));
+			const enum CXCursorKind type_cursor_kind = clang_getCursorKind(type_cursor);
+
+			// Make sure we can actually reflect the type this typedef points to.
+			if (type_cursor_kind != CXCursor_StructDecl && type_cursor_kind != CXCursor_EnumDecl && type_cursor_kind != CXCursor_UnionDecl)
+				return CXChildVisit_Continue;
+
+			reflect_ctx* ctx = client_data;
+
+			type_info_builder builder = {0};
+			builder.kind = cursor_kind_to_type_info_kind(type_cursor_kind);
+			builder.name = cursor_display_name(type_cursor);
+			clang_visitChildren(type_cursor, reflect_type, &builder);
 
 			vec_push(&ctx->types, builder);
 		}
@@ -217,12 +252,8 @@ void parse_file(const char* file_path, reflect_ctx* ctx, const char* const* comm
 
 		const CXString string = clang_formatDiagnostic(diag, clang_defaultDiagnosticDisplayOptions());
 
-		if (severity == CXDiagnostic_Error || severity == CXDiagnostic_Fatal) {
-			fprintf(stderr, ANSI_STYLE(RED) "ERROR: ");
-		} else if (severity == CXDiagnostic_Warning) {
-			fprintf(stderr, ANSI_STYLE(YELLOW) "WARNING: ");
-		}
-		fprintf(stderr, "%s" ANSI_RESET "\n", clang_getCString(string));
+		const char* style = severity == CXDiagnostic_Error || severity == CXDiagnostic_Fatal ? ANSI_STYLE(RED) : ANSI_STYLE(YELLOW);
+		fprintf(stderr, "%s%s" ANSI_RESET "\n", style, clang_getCString(string));
 
 
 		clang_disposeString(string);

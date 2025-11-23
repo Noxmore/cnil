@@ -5,6 +5,7 @@
 #include "write.h"
 
 #include "nil/ansi_colors.h"
+#include "nil/path_utils.h"
 
 #include <unistd.h>
 
@@ -31,7 +32,7 @@ int main(const int argc, const char* const* argv) {
 	const char* out_path = argv[argc-1];
 	const char* src_path = argv[argc-2];
 
-	printf(ANSI_STYLE(GREEN, BOLD) "  Reflecting " ANSI_RESET "%s -> %s\n", src_path, out_path);
+	fprintf(stderr, ANSI_STYLE(GREEN, BOLD) "  Reflecting " ANSI_STYLE(WHITE) "%s " ANSI_STYLE(BRIGHT_BLACK) "(%s)" ANSI_RESET "\n", nil_get_filename(src_path), nil_get_filename(out_path));
 
 	reflect_ctx ctx = {0};
 
