@@ -75,7 +75,7 @@ static void debug_reflected_recursive(const void* obj, const type_info* type, co
 
 			break;
 		case type_info_enum:
-			const s64 value = get_any_sized_int(obj, type->type_size);
+			const s64 value = get_any_sized_int(obj, type->size);
 			const char* name = reflect_enum_name_from_variant_value(type, value);
 			if (name != nullptr)
 				printf(COLOR_ENUM "%s " COLOR_COMMENT "/* %li */", name, value);
@@ -114,8 +114,8 @@ void debug_reflected(const void* obj, const type_info* type) {
 		.kind = type_info_opaque,                                                \
 		.mutable = true,                                                         \
 		.name = #T,                                                              \
-		.type_size = sizeof(T),                                                  \
-		.type_align = alignof(T),                                                \
+		.size = sizeof(T),                                                  \
+		.align = alignof(T),                                                \
 		.annotations = nullptr,                                                  \
 		.annotation_count = 0,                                                   \
 		.free = nullptr,                                                         \
@@ -157,8 +157,8 @@ DEFINE_TYPE_INFO(float) {
 	.kind = type_info_opaque,
 	.mutable = true,
 	.name = "float",
-	.type_size = sizeof(float),
-	.type_align = alignof(float),
+	.size = sizeof(float),
+	.align = alignof(float),
 	.annotations = nullptr,
 	.annotation_count = 0,
 	.free = nullptr,
@@ -179,8 +179,8 @@ DEFINE_TYPE_INFO(double) {
 	.kind = type_info_opaque,
 	.mutable = true,
 	.name = "double",
-	.type_size = sizeof(double),
-	.type_align = alignof(double),
+	.size = sizeof(double),
+	.align = alignof(double),
 	.annotations = nullptr,
 	.annotation_count = 0,
 	.free = nullptr,

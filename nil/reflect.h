@@ -46,8 +46,8 @@ typedef struct type_info {
 
 	// Optional type name. Can be nullptr.
 	const char* name;
-	usize type_size;
-	usize type_align;
+	usize size;
+	usize align;
 
 	type_info_annotations annotations;
 	usize annotation_count;
@@ -88,7 +88,7 @@ typedef struct type_info {
 #define EXPORT_TYPE(T) extern const type_info NIL_TYPE_INFO_NAME(T);
 #define DEFINE_TYPE_INFO(T) const type_info NIL_TYPE_INFO_NAME(T) =
 
-#define type_info_of(T) &NIL_TYPE_INFO_NAME(T)
+#define type_info_of(T) (&NIL_TYPE_INFO_NAME(T))
 
 // Automatic reflection.
 #define NIL_ANNOTATION_REFLECT "reflect"
@@ -125,8 +125,8 @@ EXPORT_TYPE(double)
 /*#define ENUM_CODEC(T, ...) DEFINE_CODEC(T) {                         \
 	.type = codec_enum,                                                                \
 	.name = #T,                                                                        \
-	.type_size = sizeof(enum T),                                                       \
-	.type_align = alignof(enum T),                                                     \
+	.size = sizeof(enum T),                                                       \
+	.align = alignof(enum T),                                                     \
 	.mutable = true,                                                                   \
 	.free = nullptr,                                                                   \
 	.enum_data = {                                                                     \
@@ -161,8 +161,8 @@ EXPORT_TYPE(double)
 #define STRUCT_CODEC(T, ...) const codec TYPE_CODEC_NAME(T) = {                               \
 	.type = codec_struct,                                                                      \
 	.name = #T,                                                                                \
-	.type_size = sizeof(struct T),                                                             \
-	.type_align = alignof(struct T),                                                           \
+	.size = sizeof(struct T),                                                             \
+	.align = alignof(struct T),                                                           \
 	.mutable = true,                                                                           \
 	.free = nullptr,                                                                           \
 	.struct_data = {                                                                           \

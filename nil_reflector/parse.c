@@ -6,6 +6,7 @@
 #include <clang-c/Index.h>
 
 #include "nil/panic.h"
+#include "nil/ansi_colors.h"
 
 /*static void debug_display_name(CXCursor cursor) {
 	const CXString debug = clang_getCursorDisplayName(cursor);
@@ -18,6 +19,25 @@ static bool is_display_name_eq(CXCursor cursor, const char* s) {
 	const bool is_eq = strcmp(clang_getCString(display_name), s) == 0;
 	clang_disposeString(display_name);
 	return is_eq;
+}
+
+static enum type_info_kind cursor_kind_to_type_info_kind(const enum CXCursorKind kind) {
+	switch (kind) {
+		case CXCursor_StructDecl: return type_info_struct;
+		case CXCursor_UnionDecl: return type_info_union;
+		case CXCursor_EnumDecl: return type_info_enum;
+		default: return type_info_opaque; // Shouldn't happen.
+	}
+}
+
+static bool parse_ctx_contains_type(const reflect_ctx* ctx, CXCursor cursor) {
+	for (usize i = 0; i < ctx->types.len; i++) {
+		const type_info_builder* type = &ctx->types.data[i];
+		if (is_display_name_eq(cursor, type->name.data) && cursor_kind_to_type_info_kind(clang_getCursorKind(cursor)) == type->kind)
+			return true;
+	}
+
+	return false;
 }
 
 // Takes ownership of `s`, disposing it in the process.
@@ -145,15 +165,6 @@ static enum CXChildVisitResult is_marked_for_reflection(CXCursor cursor, CXCurso
 	return CXChildVisit_Continue;
 }
 
-static enum type_info_kind cursor_kind_to_type_info_kind(const enum CXCursorKind kind) {
-	switch (kind) {
-		case CXCursor_StructDecl: return type_info_struct;
-		case CXCursor_UnionDecl: return type_info_union;
-		case CXCursor_EnumDecl: return type_info_enum;
-		default: return type_info_opaque; // Shouldn't happen.
-	}
-}
-
 static enum CXChildVisitResult search_for_reflected_types(CXCursor cursor, CXCursor parent, CXClientData client_data) {
 	// clang_getCursor
 	// Allocate a CXString representing the name of the current cursor
@@ -164,11 +175,12 @@ static enum CXChildVisitResult search_for_reflected_types(CXCursor cursor, CXCur
 		bool should_be_reflected = false;
 		clang_visitChildren(cursor, is_marked_for_reflection, &should_be_reflected);
 
-		if (should_be_reflected) {
+		reflect_ctx* ctx = client_data;
+
+		if (should_be_reflected && !parse_ctx_contains_type(ctx, cursor)) {
 			// debug_display_name(parent);
 			// debug_display_name(current_cursor);
 			// const CXString typename = clang_getCursorDisplayName(current_cursor);
-			reflect_ctx* ctx = client_data;
 
 			type_info_builder builder = {0};
 			builder.kind = cursor_kind_to_type_info_kind(kind);
@@ -184,20 +196,43 @@ static enum CXChildVisitResult search_for_reflected_types(CXCursor cursor, CXCur
 	return CXChildVisit_Recurse;
 }
 
-void parse_file(const char* file_path, reflect_ctx* ctx, const char* const* command_line_args, int command_line_arg_count) {
+void parse_file(const char* file_path, reflect_ctx* ctx, const char* const* command_line_args, const int command_line_arg_count) {
 	CXIndex index = clang_createIndex(0, 0); //Create index
 	CXTranslationUnit unit;
 	const enum CXErrorCode parse_error = clang_parseTranslationUnit2(
 		index,
 		file_path, command_line_args, command_line_arg_count,
 		nullptr, 0,
-		CXTranslationUnit_None,
+		CXTranslationUnit_SkipFunctionBodies,
 		&unit);
 
 	if (parse_error != CXError_Success) {
-		panic("Unable to parse translation unit with error code %u. Quitting.", parse_error);
+		panic("Unable to parse translation unit %s with error code %u. Quitting.", file_path, parse_error);
 	}
+
+	for (unsigned i = 0; i < clang_getNumDiagnostics(unit); i++) {
+		CXDiagnostic diag = clang_getDiagnostic(unit, i);
+
+		const enum CXDiagnosticSeverity severity = clang_getDiagnosticSeverity(diag);
+
+		const CXString string = clang_formatDiagnostic(diag, clang_defaultDiagnosticDisplayOptions());
+
+		if (severity == CXDiagnostic_Error || severity == CXDiagnostic_Fatal) {
+			fprintf(stderr, ANSI_STYLE(RED) "ERROR: ");
+		} else if (severity == CXDiagnostic_Warning) {
+			fprintf(stderr, ANSI_STYLE(YELLOW) "WARNING: ");
+		}
+		fprintf(stderr, "%s" ANSI_RESET "\n", clang_getCString(string));
+
+
+		clang_disposeString(string);
+		clang_disposeDiagnostic(diag);
+	}
+
 	CXCursor cursor = clang_getTranslationUnitCursor(unit); // Obtain a cursor at the root of the translation unit
 
 	clang_visitChildren(cursor, search_for_reflected_types, ctx);
+
+	clang_disposeTranslationUnit(unit);
+	clang_disposeIndex(index);
 }

@@ -58,8 +58,8 @@ static void write_parsed_type(FILE* file, const type_info_builder* type, const u
 
 	fputs(body_indent, file); fprintf(file, ".name = \"%s\",\n", type->name.data);
 	const char* type_namespace = get_type_namespace(type);
-	fputs(body_indent, file); fprintf(file, ".type_size = sizeof(%s %s),\n", type_namespace, type->name.data);
-	fputs(body_indent, file); fprintf(file, ".type_align = alignof(%s %s),\n", type_namespace, type->name.data);
+	fputs(body_indent, file); fprintf(file, ".size = sizeof(%s %s),\n", type_namespace, type->name.data);
+	fputs(body_indent, file); fprintf(file, ".align = alignof(%s %s),\n", type_namespace, type->name.data);
 
 	write_annotations(file, body_indent, "\n", type->annotations.data, type->annotations.len);
 
