@@ -1,46 +1,47 @@
 #include "vec.h"
 #include "allocator.h"
 
-void internal_vecDrop(ErasedVec* arr) {
+void internal_vec_free(erased_vec* arr) {
 	if (arr->data != nullptr) nil_free(arr->data);
-	memset(arr, 0, sizeof(ErasedVec));
+	memset(arr, 0, sizeof(erased_vec));
 }
 
-void* internal_vecReserveItem(ErasedVec* arr, usize itemSize) {
+void* internal_vec_reserve_item(erased_vec* arr, const usize item_size) {
 	arr->len++;
 
 	if (arr->cap < arr->len) {
-		internal_vecReallocate(arr, itemSize, arr->len * 2);
+		internal_vec_reallocate(arr, item_size, arr->len * 2);
 	}
 
-	return arr->data + (arr->len - 1) * itemSize;
+	return arr->data + (arr->len - 1) * item_size;
 }
 
-void internal_vecReallocate(ErasedVec* arr, usize itemSize, usize newCap) {
-	void* newData = nil_alloc(newCap * itemSize);
+void internal_vec_reallocate(erased_vec* arr, const usize item_size, const usize new_cap) {
+	arr->data = nil_realloc(arr->data, new_cap * item_size);
+	/*void* new_data = nil_alloc(new_cap * item_size);
 
 	if (arr->data != nullptr) {
-		memcpy(newData, arr->data, arr->len * itemSize);
+		memcpy(new_data, arr->data, arr->len * item_size);
 
 		nil_free(arr->data);
-	}
+	}*/
 
-	arr->cap = newCap;
-	arr->data = newData;
+	arr->cap = new_cap;
+	// arr->data = new_data;
 }
 
-void internal_vecPop(ErasedVec* arr, usize itemSize, void* dst) {
+void internal_vec_pop(erased_vec* arr, usize item_size, void* dst) {
 	arr->len--;
 
 	if (dst != nullptr)
-		memcpy(dst, arr->data + arr->len * itemSize, itemSize);
+		memcpy(dst, arr->data + arr->len * item_size, item_size);
 
-	memset(arr->data + arr->len * itemSize, 0, itemSize);
+	memset(arr->data + arr->len * item_size, 0, item_size);
 }
 
-void internal_vecCopyFrom(ErasedVec* arr, usize itemSize, void* src, usize count) {
+void internal_vec_copy_from(erased_vec* arr, const usize item_size, const void* src, const usize count) {
 	if (arr->cap < count) {
-		void* newData = nil_alloc(count * itemSize);
+		void* newData = nil_alloc(count * item_size);
 
 		if (arr->data != nullptr) {
 			nil_free(arr->data);
@@ -50,16 +51,32 @@ void internal_vecCopyFrom(ErasedVec* arr, usize itemSize, void* src, usize count
 		arr->data = newData;
 	}
 
-	memcpy(arr->data, src, count * itemSize);
+	memcpy(arr->data, src, count * item_size);
 	arr->len = count;
 }
 
-/*bool internal_vecContains(ErasedVec* arr, usize itemSize, void* value) {
-	return arrayContains(arr->data, arr->len, itemSize, value);
+void internal_vec_remove(erased_vec* vec, const usize item_size, const usize index) {
+	if (index < vec->len - 1)
+		memmove(
+			vec->data + item_size * index,
+			vec->data + item_size * (index+1),
+			(vec->len - index - 1) * item_size
+		);
+	vec->len--;
+}
+
+void internal_vec_remove_swap_last(erased_vec* vec, const usize item_size, const usize index) {
+	if (vec->len > 1 && index < vec->len - 1)
+		memcpy(vec->data + item_size * index, vec->data + item_size * (vec->len - 1), item_size);
+	vec->len--;
+}
+
+/*bool internal_vec_contains(erased_vec* arr, usize item_size, void* value) {
+	return arrayContains(arr->data, arr->len, item_size, value);
 }*/
 
 
-void* internal_slottedVecReserveSlot(ErasedVec* arr, usize slotSize, usize generationOffset) {
+void* internal_slotted_vec_reserve_slot(erased_vec* arr, const usize slotSize, const usize generationOffset) {
 //	usize slotSize = sizeof(bool) + slotSize + sizeof(usize);
 	for (usize i = 0; i < arr->len; i++) {
 		void* slot = arr->data + i * slotSize;
@@ -78,7 +95,7 @@ void* internal_slottedVecReserveSlot(ErasedVec* arr, usize slotSize, usize gener
 		}
 	}
 
-	void* slot = internal_vecReserveItem(arr, slotSize);
+	void* slot = internal_vec_reserve_item(arr, slotSize);
 
 	bool* present = (bool*)slot;
 

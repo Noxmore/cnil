@@ -1,7 +1,7 @@
 #pragma once
 
 #include "nint.h"
-#include "codec.h"
+#include "reflect.h"
 
 // Heap-allocated growable string type. Interface with like a vector.
 typedef struct string {
@@ -10,14 +10,14 @@ typedef struct string {
 	usize len;
 	usize cap;
 } string;
-EXTERN_CODEC(string)
+DECLARE_TYPE_INFO(string)
 
 // String slice.
 typedef struct str {
 	const char* data;
 	usize len;
 } str;
-EXTERN_CODEC(str)
+DECLARE_TYPE_INFO(str)
 
 // Creates a string via a null terminated C string.
 string string_new(const char* str);
