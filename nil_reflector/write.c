@@ -26,12 +26,15 @@ static void write_annotations(FILE* file, const char* prefix, const char* suffix
 	fputs(suffix, file);
 }
 
-static const char* get_type_namespace(const type_info_builder* type) {
+static const char* get_type_prefix(const type_info_builder* type) {
+	if (type->no_namespace)
+		return "";
+
 	switch (type->kind) {
-		case type_info_struct: return "struct";
-		case type_info_enum: return "enum";
-		case type_info_union: return "union";
-		default: return nullptr;
+		case type_info_struct: return "struct ";
+		case type_info_enum: return "enum ";
+		case type_info_union: return "union ";
+		default: return "";
 	}
 }
 
@@ -46,8 +49,6 @@ static const char* type_info_kind_as_string(const enum type_info_kind kind) {
 }
 
 static void write_parsed_type(FILE* file, const type_info_builder* type, const u32 depth) {
-	fprintf(file, "{\n");
-
 	// We need to pass a suffix to write_annotations anyway, so we calculate this up front.
 	const u32 body_indent_chars = depth + 1;
 	char body_indent[body_indent_chars + 1];
@@ -57,9 +58,9 @@ static void write_parsed_type(FILE* file, const type_info_builder* type, const u
 	fputs(body_indent, file); fprintf(file, ".kind = %s,\n", type_info_kind_as_string(type->kind));
 
 	fputs(body_indent, file); fprintf(file, ".name = \"%s\",\n", type->name.data);
-	const char* type_namespace = get_type_namespace(type);
-	fputs(body_indent, file); fprintf(file, ".size = sizeof(%s %s),\n", type_namespace, type->name.data);
-	fputs(body_indent, file); fprintf(file, ".align = alignof(%s %s),\n", type_namespace, type->name.data);
+	const char* type_prefix = get_type_prefix(type);
+	fputs(body_indent, file); fprintf(file, ".size = sizeof(%s%s),\n", type_prefix, type->name.data);
+	fputs(body_indent, file); fprintf(file, ".align = alignof(%s%s),\n", type_prefix, type->name.data);
 
 	write_annotations(file, body_indent, "\n", type->annotations.data, type->annotations.len);
 
@@ -80,13 +81,13 @@ static void write_parsed_type(FILE* file, const type_info_builder* type, const u
 				write_annotations(file, "", " ", field->annotations.data, field->annotations.len);
 				fprintf(file, ".field_type = ");
 				if (field->anon_type != nullptr) {
-					fprintf(file, "&(type_info_field)");
+					fprintf(file, "&(type_info){\n");
 					write_parsed_type(file, field->anon_type, depth + 1);
-					fprintf(file, ", ");
+					fprintf(file, "}, ");
 				} else {
 					fprintf(file, "&NIL_TYPE_INFO_NAME(%s), ", field->field_type.data);
 				}
-				fprintf(file, ".struct_offset = __builtin_offsetof(%s %s, %s), ", type_namespace, type->name.data, field->name.data);
+				fprintf(file, ".struct_offset = __builtin_offsetof(%s%s, %s), ", type_prefix, type->name.data, field->name.data);
 				fprintf(file, ".is_pointer = %s, ", field->is_pointer ? "true" : "false");
 				fprintf(file, ".is_const = %s ", field->is_const ? "true" : "false");
 				fprintf(file, "},\n");
@@ -112,18 +113,15 @@ static void write_parsed_type(FILE* file, const type_info_builder* type, const u
 			fputs(body_indent, file); fprintf(file, "},\n");
 		}
 	}
-
-	indent(file, depth);
-	fprintf(file, "};");
 }
 
 static void write_type_and_subtype_definitions(FILE* file, const type_info_builder* type) {
 	for (usize i = 0; i < type->sub_types.len; i++)
 		write_type_and_subtype_definitions(file, &type->sub_types.data[i]);
 
-	fprintf(file, "DEFINE_TYPE_INFO(%s) ", type->name.data);
+	fprintf(file, "DEFINE_TYPE_INFO(%s, \n", type->name.data);
 	write_parsed_type(file, type, 0);
-	fputc('\n', file);
+	fprintf(file, ")\n");
 }
 
 void write_parsed_types(FILE* file, const reflect_ctx* ctx, const char* header_file) {

@@ -6,14 +6,21 @@ project(cnil C)
 set(CMAKE_C_STANDARD 23)
 set(CMAKE_EXPORT_COMPILE_COMMANDS)
 
-#include(FetchContent)
-#set(FETCHCONTENT_QUIET FALSE)
+include(FetchContent)
+set(FETCHCONTENT_QUIET FALSE)
+#FetchContent_Declare(
+#	mlib
+#	GIT_REPOSITORY https://github.com/P-p-H-d/mlib.git
+#	GIT_TAG V0.8.0
+#)
+# We use swisstables for type traits as well
 #FetchContent_Declare(
 #	swisstable
-#	GIT_REPOSITORY https://github.com/taviso/swisstable.git
-#	GIT_TAG d01faf6
+#	GIT_REPOSITORY https://github.com/google/cwisstable.git
+#	GIT_TAG 6de0e5f
 #)
 #FetchContent_MakeAvailable(swisstable)
+#FetchContent_MakeAvailable(mlib)
 
 file(GLOB SRC_FILES CONFIGURE_DEPENDS nil/*.c)
 

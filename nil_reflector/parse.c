@@ -103,8 +103,6 @@ static enum CXChildVisitResult reflect_type(CXCursor cursor, CXCursor parent, CX
 
 		if (field_type.kind == CXType_Pointer)
 			field_type = clang_getPointeeType(field_type);
-		// field_type before elaborations/type tags are removed.
-		const CXType possibly_elaborated_field_type = field_type;
 		if (field_type.kind == CXType_Elaborated)
 			field_type = clang_Type_getNamedType(field_type);
 		if (field_type.kind == CXType_Invalid) {
@@ -124,17 +122,11 @@ static enum CXChildVisitResult reflect_type(CXCursor cursor, CXCursor parent, CX
 
 			field.anon_type = sub_type;
 		} else {
-			field.field_type = convert_str(clang_getTypeSpelling(field_type));
 			if (field_type.kind == CXType_Record || field_type.kind == CXType_Enum) {
-				// field.field_type = cursor_spelling(clang_getTypeDeclaration(field_type));
-				// Replace spaces with commas for the macro to handle elaborated types.
-				for (usize i = 0; i < field.field_type.len; i++) {
-					if (field.field_type.data[i] == ' ')
-						field.field_type.data[i] = ',';
-				}
-			} /*else {
-			}*/
-			// field.field_type = convert_str(clang_getTypeSpelling(field_type));
+				field.field_type = cursor_spelling(clang_getTypeDeclaration(field_type));
+			} else {
+				field.field_type = convert_str(clang_getTypeSpelling(field_type));
+			}
 		}
 
 		vec_push(&type->struct_fields, field);
@@ -205,10 +197,11 @@ static enum CXChildVisitResult search_for_reflected_types(CXCursor cursor, CXCur
 
 		if (should_be_reflected) {
 			// debug_display_name(current_cursor);
-			CXCursor type_cursor = cursor;
+			// CXCursor type_cursor = clang_getTypeDeclaration(clang_getTypedefDeclUnderlyingType(cursor));
+			CXCursor type_cursor = clang_getTypeDeclaration(clang_getCanonicalType(clang_getTypedefDeclUnderlyingType(cursor)));
 			// Trace back through all layers of typedefs.
-			while (clang_getCursorKind(type_cursor) == CXCursor_TypedefDecl)
-				type_cursor = clang_getTypeDeclaration(clang_getTypedefDeclUnderlyingType(type_cursor));
+			// while (clang_getCursorKind(type_cursor) == CXCursor_TypedefDecl)
+			// 	type_cursor = clang_getTypeDeclaration(clang_getTypedefDeclUnderlyingType(type_cursor));
 			const enum CXCursorKind type_cursor_kind = clang_getCursorKind(type_cursor);
 
 			// Make sure we can actually reflect the type this typedef points to.
@@ -220,6 +213,14 @@ static enum CXChildVisitResult search_for_reflected_types(CXCursor cursor, CXCur
 			type_info_builder builder = {0};
 			builder.kind = cursor_kind_to_type_info_kind(type_cursor_kind);
 			builder.name = cursor_display_name(type_cursor);
+			// Backup name, just in case versions/compilers differ on things like anonymous structs.
+			if (builder.name.data == nullptr)
+				builder.name = convert_str(clang_getTypeSpelling(clang_getTypedefDeclUnderlyingType(cursor)));
+
+			const CXString typedef_spelling = clang_getTypeSpelling(clang_getTypedefDeclUnderlyingType(cursor));
+			builder.no_namespace = strcmp(clang_getCString(typedef_spelling), builder.name.data) == 0;
+			clang_disposeString(typedef_spelling);
+
 			clang_visitChildren(type_cursor, reflect_type, &builder);
 
 			vec_push(&ctx->types, builder);

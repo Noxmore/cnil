@@ -10,7 +10,7 @@ static void string_from_string(const char* src, char** end_ptr, void* dst) {
 static void string_to_string(FILE* file, const void* src) {
 	fputs(((string*)src)->data, file);
 }
-DEFINE_TYPE_INFO(string) {
+DEFINE_TYPE_INFO(string,
 	.kind = type_info_opaque,
 	.mutable = true,
 	.name = "string",
@@ -18,13 +18,14 @@ DEFINE_TYPE_INFO(string) {
 	.align = alignof(string),
 	.annotations = nullptr,
 	.annotation_count = 0,
-	.free = (type_info_free_fn)string_free,
+	// .free = (type_info_free_fn)string_free,
 	.opaque_data = {
 		.kind = type_info_opaque_string,
 		.to_string = string_to_string,
 		.from_string = string_from_string,
 	},
-};
+)
+REFLECT_FREE_FN(string, string_free)
 
 static void str_from_string(const char* src, char** end_ptr, void* dst) {
 	// TODO: This doesn't take ownership, should this function be nullptr?
@@ -33,21 +34,24 @@ static void str_from_string(const char* src, char** end_ptr, void* dst) {
 static void str_to_string(FILE* file, const void* src) {
 	fputs(((str*)src)->data, file);
 }
-DEFINE_TYPE_INFO(str) {
+DEFINE_TYPE_INFO(str,
 	.kind = type_info_opaque,
 	.mutable = false,
 	.name = "str",
 	.size = sizeof(str),
 	.align = alignof(str),
-	.free = nullptr,
+	// .free = nullptr,
 	.opaque_data = {
 		.kind = type_info_opaque_string,
 		.to_string = str_to_string,
 		.from_string = str_from_string,
 	},
-};
+)
 
 string string_new(const char* str) {
+	if (str == nullptr)
+		return (string){0};
+
 	const usize len = strlen(str);
 
 	if (len == 0)

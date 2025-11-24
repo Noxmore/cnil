@@ -1,6 +1,7 @@
 #pragma once
 
 #include "nint.h"
+#include "macro_utils.h"
 
 #include <bits/types/FILE.h>
 
@@ -43,6 +44,9 @@ typedef struct type_info {
 	} kind;
 
 	bool mutable;
+	// Index into the type registry. This is a pointer to a static variable so that we can mutate it at ctor-time.
+	// Do not rely on this in functions with __attribute__((constructor)) UNLESS you specify a priority.
+	u32* index;
 
 	// Optional type name. Can be nullptr.
 	const char* name;
@@ -53,7 +57,7 @@ typedef struct type_info {
 	usize annotation_count;
 
 	// Custom free function. Can be nullptr.
-	type_info_free_fn free;
+	// type_info_free_fn free;
 
 	union {
 		struct {
@@ -84,7 +88,62 @@ typedef struct type_info {
 	};
 } type_info;
 
+// If applicable, calls the reflected free function of `type` on `data`.
+void free_reflected(const type_info* type, void* data);
+
+
+/*#if defined(_WIN32) || defined(__CYGWIN__)
+	 // Windows PE/COFF format: use .data section with a common prefix.
+	 // NOTE: This assumes a GCC/Clang toolchain (like MinGW/MSYS2).
+	 #define NIL_REFLECTION_SECTION(name) __attribute__((section(".data." name)))
+#elif defined(__APPLE__)
+	 // macOS/iOS Mach-O format: uses __DATA,__section_name
+	 #define NIL_REFLECTION_SECTION(name) __attribute__((section("__DATA," name)))
+#elif defined(__linux__) || defined(__GNUC__)
+	 // Linux/Generic ELF format: standard .data.section_name
+	 #define NIL_REFLECTION_SECTION(name) __attribute__((section(".data." name)))
+#else
+	 #error "Unsupported platform for reflection section linking."
+#endif*/
+
+// void nil_register_type_info__(type_info* type);
+const type_info* type_registry_get(usize index);
+usize type_registry_len();
+inline usize type_registry_index(const type_info* type);
+// const type_info* get_type_registry();
+
+// typedef struct trait_registry trait_registry;
+
+// trait_registry* trait_registry_new();
+
+// -- TRAITS -- //
+
+#define NIL_TRAIT_CONSTRUCTION_PRIORITY 150
+#define TYPE_TRAIT_CONSTRUCTOR __attribute__((constructor(NIL_TRAIT_CONSTRUCTION_PRIORITY)))
+
+// Registers a free/destructor function for a reflected type. You should not call this manually. Use REFLECT_FREE_FN instead.
+void type_info_register_free_fn(const type_info* type, type_info_free_fn fn);
+// If `type` has a registered free/destructor function, returns it, else `nullptr`.
+type_info_free_fn get_reflected_free_fn(const type_info* type);
+
+// Do not use in header files.
+#define REFLECT_FREE_FN(T, FN) TYPE_TRAIT_CONSTRUCTOR static void NIL_GENERATED_COUNTER_NAME(reflect_destructor)() { type_info_register_free_fn(TYPE_INFO(T), (type_info_free_fn)FN); }
+
+/*typedef struct sparse_trait_registry {
+
+} sparse_trait_registry;*/
+
+/*
+#define DECLARE_SPARSE_TRAIT_REGISTRY(NAME, T) \
+	const T* NAME##_get(const type_info* type);
+
+#define DEFINE_SPARSE_TRAIT_REGISTRY(NAME, T) \
+*/
+
+
+
 #define NIL_TYPE_INFO_NAME(T) type_info_$_##T
+#define NIL_TYPE_INFO_INDEX_NAME(T) type_info_index_$_##T
 #define DECLARE_TYPE_INFO(T) extern const type_info NIL_TYPE_INFO_NAME(T);
 
 #define NIL_ELABORATED_TYPE_OPTION(_1, _2, NAME, ...) NAME
@@ -93,7 +152,13 @@ typedef struct type_info {
 #define NIL_REFLECT_TYPE_SIMPLE(T) NIL_REFLECTION_AUTO_REGISTER_MARKER(T); DECLARE_TYPE_INFO(T)
 #define NIL_REFLECT_TYPE_ELABORATED(TAG, T) NIL_REFLECTION_AUTO_REGISTER_MARKER(TAG T); DECLARE_TYPE_INFO(T)
 
-#define DEFINE_TYPE_INFO(T) const type_info NIL_TYPE_INFO_NAME(T) =
+#define DEFINE_TYPE_INFO(T, ...) \
+	static u32 NIL_TYPE_INFO_INDEX_NAME(T) = 0xFFFFFFFF; \
+	const type_info NIL_TYPE_INFO_NAME(T) = { .index = &NIL_TYPE_INFO_INDEX_NAME(T), __VA_ARGS__ }; \
+	__attribute__((section("type_registry"))) static const type_info* NIL_GENERATED_COUNTER_NAME(register_type_info) = &NIL_TYPE_INFO_NAME(T);
+	// extern type_info NIL_TYPE_INFO_NAME(T); \
+	// __attribute__((constructor)) static void NIL_TYPE_INFO_REGISTER_FN_NAME() { nil_register_type_info__(&NIL_TYPE_INFO_NAME(T)); } \
+
 
 // Retrieves the `type_info` of a type. Namespaced types must be separated by a comma instead of a space due to macro limitations.
 // For example: TYPE_INFO(struct,my_struct) or TYPE_INFO(my_struct_t) if it is behind a typedef.
@@ -104,13 +169,13 @@ typedef struct type_info {
 // Automatic reflection.
 #define NIL_ANNOTATION_GENERATE_REFLECTION "auto_reflect"
 #define NIL_ANNOTATION_REFLECT_IGNORE "reflect_ignore"
+// #define NIL_ANNOTATION_REFLECT_FREE_PREFIX "reflect_free="
 
-#define NIL_REFLECTION_AUTO_REGISTER_MARKER(T) NIL_REFLECTION_AUTO_REGISTER_MARKER_INNER_1(T, __COUNTER__)
-#define NIL_REFLECTION_AUTO_REGISTER_MARKER_INNER_1(T, COUNTER) NIL_REFLECTION_AUTO_REGISTER_MARKER_INNER(T, COUNTER)
-#define NIL_REFLECTION_AUTO_REGISTER_MARKER_INNER(T, COUNTER) typedef T nil_reflection_auto_register_marker##COUNTER##__ ANNOTATE(NIL_ANNOTATION_GENERATE_REFLECTION)
+#define NIL_REFLECTION_AUTO_REGISTER_MARKER(T) typedef T NIL_GENERATED_COUNTER_NAME(auto_register_marker) ANNOTATE(NIL_ANNOTATION_GENERATE_REFLECTION)
 
 #define ANNOTATE(STRING) __attribute__((annotate(STRING)))
 #define REFLECT_IGNORE ANNOTATE(NIL_ANNOTATION_REFLECT_IGNORE)
+// #define REFLECT_FREE(FN) ANNOTATE(NIL_ANNOTATION_REFLECT_FREE_PREFIX #FN)
 
 DECLARE_TYPE_INFO(u8)
 DECLARE_TYPE_INFO(u16)
@@ -135,55 +200,6 @@ DECLARE_TYPE_INFO(long)
 
 DECLARE_TYPE_INFO(float)
 DECLARE_TYPE_INFO(double)
-
-/*#define ENUM_CODEC(T, ...) DEFINE_CODEC(T) {                         \
-	.type = codec_enum,                                                                \
-	.name = #T,                                                                        \
-	.size = sizeof(enum T),                                                       \
-	.align = alignof(enum T),                                                     \
-	.mutable = true,                                                                   \
-	.free = nullptr,                                                                   \
-	.enum_data = {                                                                     \
-		.variant_count = NIL_COUNT_ARGS(__VA_ARGS__),                                   \
-		.variant_names = (const char*[]){NIL_WRAP_VA_ARGS(NIL_STRINGIFY, __VA_ARGS__)}, \
-		.variant_values = (s64[]){__VA_ARGS__},                                         \
-	},                                                                                 \
-};
-
-/*#define NIL_STRUCT_CODEC_FIELD_TYPE($field_type) _Generic(($field_type),\
-	s8: codec_field_sint,          \
-	s16: codec_field_sint,         \
-	s32: codec_field_sint,         \
-	s64: codec_field_sint,         \
-	u8: codec_field_uint,          \
-	u16: codec_field_uint,         \
-	u32: codec_field_uint,         \
-	u64: codec_field_uint,         \
-	usize: codec_field_uint,       \
-	float: codec_field_float,      \
-	double: codec_field_float,     \
-	char*: codec_field_string,     \
-	string: codec_field_string,    \
-	str: codec_field_string,       \
-	default: codec_field_sub_codec,\
-)#1#
-#define NIL_STRUCT_CODEC_FIELD(T, $field_type, $name) {#$name, NIL_STRUCT_CODEC_FIELD_TYPE($field_type), sizeof(struct T{}.$name), offsetof(struct T, $name), &TYPE_CODEC_NAME($field_type)}
-#define NIL_STRUCT_CODEC_FIELD_TUPLE($tuple) NIL_STRUCT_CODEC_FIELD(NIL_IDENTITY $tuple)
-// #define NIL_STRUCT_CODEC_ADD_TYPE(T, $tuple) (T, )
-// #define NIL_STRUCT_CODEC_FIELD_TUPLE($tuple) NIL_IDENTITY $tuple
-
-#define STRUCT_CODEC(T, ...) const codec TYPE_CODEC_NAME(T) = {                               \
-	.type = codec_struct,                                                                      \
-	.name = #T,                                                                                \
-	.size = sizeof(struct T),                                                             \
-	.align = alignof(struct T),                                                           \
-	.mutable = true,                                                                           \
-	.free = nullptr,                                                                           \
-	.struct_data = {                                                                           \
-		.field_count = NIL_COUNT_ARGS(__VA_ARGS__),                                             \
-		.fields = (codec_field[]){NIL_WRAP_VA_ARGS(NIL_STRUCT_CODEC_FIELD_TUPLE, __VA_ARGS__)}, \
-	},                                                                                         \
-};*/
 
 // Attempts to get an enum variant's name from a variant value based on the specified codec.
 // Returns nullptr if either the codec is not a valid enum codec, or the variant_value is not in the codec.

@@ -9,6 +9,7 @@ typedef struct field_builder field_builder;
 typedef struct type_info_builder {
 	enum type_info_kind kind;
 	string name;
+	bool no_namespace; // For types in the form of `typedef struct { ... } foo;`
 	vec(string) annotations;
 	const char* free_fn;
 

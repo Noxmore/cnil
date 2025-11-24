@@ -1,18 +1,84 @@
 #include "reflect.h"
 
 #include "ansi_colors.h"
+#include "vec.h"
+// #include "internal/cwisstable.h"
 
-#include <memory.h>
 #include <stdio.h>
 #include <stdlib.h>
 
-#define COLOR_COMMENT ANSI_STYLE(BLACK)
-#define COLOR_KEYWORD ANSI_STYLE(RED)
-#define COLOR_NUMBER ANSI_STYLE(MAGENTA)
-#define COLOR_STRING ANSI_STYLE(GREEN)
-#define COLOR_TYPE ANSI_STYLE(YELLOW)
-#define COLOR_ENUM ANSI_STYLE(CYAN)
-#define COLOR_ERROR ANSI_STYLE(RED)
+/*static vec_anon(const type_info*) TYPE_REGISTRY;
+
+void nil_register_type_info__(type_info* type) {
+	type->index = TYPE_REGISTRY.len;
+	vec_push(&TYPE_REGISTRY, type);
+}
+const type_info* type_registry_get(const usize index) {
+	if (index >= TYPE_REGISTRY.len)
+		return nullptr;
+
+	return TYPE_REGISTRY.data[index];
+}
+usize type_registry_len() {
+	return TYPE_REGISTRY.len;
+}*/
+
+// Because of anonymous struct, this has to be a separate type from trait_registry.
+
+extern const type_info* __start_type_registry;
+extern const type_info* __stop_type_registry;
+
+/*const type_info* get_type_registry() {
+	return __start_type_registry;
+}*/
+const type_info* type_registry_get(const usize index) {
+	/*if (index >= type_registry_len())
+		return nullptr;*/
+
+	return *(&__start_type_registry + index);
+}
+usize type_registry_len() {
+	return &__stop_type_registry - &__start_type_registry;
+}
+
+inline usize type_registry_index(const type_info* type) {
+	return *type->index;
+}
+
+__attribute__((constructor))
+static void set_type_registry_indexes() {
+	// for (const type_info** it = &__start_type_registry; it < &__stop_type_registry; it++)
+	// 	*(*it)->index
+	for (usize i = 0; i < type_registry_len(); i++)
+		*type_registry_get(i)->index = i;
+}
+/*usize type_registry_index(const type_info* type) {
+	return type - &__start_type_registry;
+}*/
+
+/*CWISS_DECLARE_FLAT_HASHMAP(trait_registry_map, const type_info*, const void*);
+
+typedef struct trait_registry {
+	trait_registry_map map;
+} trait_registry;*/
+
+void free_reflected(const type_info* type, void* data) {
+	const type_info_free_fn fn = get_reflected_free_fn(type);
+	if (fn != nullptr) fn(data);
+}
+
+static type_info_free_fn* FREE_FUNCTIONS;
+
+void type_info_register_free_fn(const type_info* type, type_info_free_fn fn) {
+	if (FREE_FUNCTIONS == nullptr)
+		FREE_FUNCTIONS = malloc(sizeof(*FREE_FUNCTIONS) * type_registry_len());
+
+	FREE_FUNCTIONS[type_registry_index(type)] = fn;
+}
+type_info_free_fn get_reflected_free_fn(const type_info* type) {
+	return FREE_FUNCTIONS[type_registry_index(type)];
+}
+
 
 const char* reflect_enum_name_from_variant_value(const type_info* type, const s64 variant_value) {
 	if (type == nullptr) return nullptr;
@@ -39,6 +105,14 @@ static s64 get_any_sized_int(const void* data, const u8 type_size) {
 	// value >>= (s64)(sizeof(s64) - type_size);
 	return value;
 }
+
+#define COLOR_COMMENT ANSI_STYLE(BLACK)
+#define COLOR_KEYWORD ANSI_STYLE(RED)
+#define COLOR_NUMBER ANSI_STYLE(MAGENTA)
+#define COLOR_STRING ANSI_STYLE(GREEN)
+#define COLOR_TYPE ANSI_STYLE(YELLOW)
+#define COLOR_ENUM ANSI_STYLE(CYAN)
+#define COLOR_ERROR ANSI_STYLE(RED)
 
 static void debug_reflected_recursive(const void* obj, const type_info* type, const u32 depth) {
 	if (type == nullptr) {
@@ -110,12 +184,12 @@ void debug_reflected(const void* obj, const type_info* type) {
 	static void T##_from_string(const char* src, char** end_ptr, void* dst) {   \
 		*(T*)dst = strtol(src, end_ptr, 10);                                     \
 	}                                                                           \
-	DEFINE_TYPE_INFO(T) {                                                       \
+	DEFINE_TYPE_INFO(T,                                                         \
 		.kind = type_info_opaque,                                                \
 		.mutable = true,                                                         \
 		.name = #T,                                                              \
-		.size = sizeof(T),                                                  \
-		.align = alignof(T),                                                \
+		.size = sizeof(T),                                                       \
+		.align = alignof(T),                                                     \
 		.annotations = nullptr,                                                  \
 		.annotation_count = 0,                                                   \
 		.free = nullptr,                                                         \
@@ -124,7 +198,7 @@ void debug_reflected(const void* obj, const type_info* type) {
 			.to_string = T##_to_string,                                           \
 			.from_string = T##_from_string,                                       \
 		},                                                                       \
-	};
+	)
 
 REFLECT_INTEGER(u8, "%u", type_info_opaque_uint)
 REFLECT_INTEGER(u16, "%u", type_info_opaque_uint)
@@ -153,7 +227,7 @@ static void float_to_string(FILE* file, const void* ptr) {
 static void float_from_string(const char* src, char** end_ptr, void* dst) {
 	*(float*)dst = strtof(src, end_ptr);
 }
-DEFINE_TYPE_INFO(float) {
+DEFINE_TYPE_INFO(float,
 	.kind = type_info_opaque,
 	.mutable = true,
 	.name = "float",
@@ -167,7 +241,7 @@ DEFINE_TYPE_INFO(float) {
 		.to_string = float_to_string,
 		.from_string = float_from_string,
 	},
-};
+)
 
 static void double_to_string(FILE* file, const void* ptr) {
 	fprintf(file, "%f", *(double*)ptr);
@@ -175,7 +249,7 @@ static void double_to_string(FILE* file, const void* ptr) {
 static void double_from_string(const char* src, char** end_ptr, void* dst) {
 	*(double*)dst = strtof(src, end_ptr);
 }
-DEFINE_TYPE_INFO(double) {
+DEFINE_TYPE_INFO(double,
 	.kind = type_info_opaque,
 	.mutable = true,
 	.name = "double",
@@ -189,4 +263,4 @@ DEFINE_TYPE_INFO(double) {
 		.to_string = double_to_string,
 		.from_string = double_from_string,
 	},
-};
+)

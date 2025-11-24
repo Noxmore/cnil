@@ -6,8 +6,7 @@
 
 #include "nil/ansi_colors.h"
 #include "nil/path_utils.h"
-
-#include <unistd.h>
+#include "nil/reflect.h"
 
 // TODO: How do we handle vectors?
 
@@ -23,11 +22,6 @@ int main(const int argc, const char* const* argv) {
 		print_help();
 		return 1;
 	}
-
-	/*for (int file_idx = 1; file_idx < argc; file_idx++) {
-		const char* file_path = argv[file_idx];
-
-	}*/
 
 	const char* out_path = argv[argc-1];
 	const char* src_path = argv[argc-2];
