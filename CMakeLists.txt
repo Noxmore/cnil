@@ -24,8 +24,15 @@ set(FETCHCONTENT_QUIET FALSE)
 
 file(GLOB SRC_FILES CONFIGURE_DEPENDS nil/*.c)
 
-add_library(nil STATIC ${SRC_FILES})
+add_library(nil OBJECT ${SRC_FILES})
 target_include_directories(nil PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+#target_link_options(nil PUBLIC "-T${CMAKE_SOURCE_DIR}/nil.ld")
+#target_link_options(nil PUBLIC "-T/d/_dev/_lib/c/cnil/nil.ld")
+#target_link_options(nil INTERFACE
+#	$<$<LINK_LANG_AND_ID:C,Clang,GNU>: -Wl,--whole-archive>
+#	$<$<PLATFORM_ID:Darwin>: -Wl,-force_load>
+#)
+#target_link_options(nil INTERFACE -Wl,)
 
 file(GLOB REFLECTOR_SRC_FILES CONFIGURE_DEPENDS nil_reflector/*.c)
 
@@ -51,7 +58,7 @@ function(reflect_types target)
 
 		add_custom_command(
 			OUTPUT "${out}"
-			COMMAND $<TARGET_FILE:nil_reflector> -std=c23 -w ${generator_flags} "${header}" "${out}"
+			COMMAND $<TARGET_FILE:nil_reflector> -std=c${CMAKE_C_STANDARD} -w ${generator_flags} "${header}" "${out}"
 			DEPENDS "${header}" nil_reflector
 			COMMENT "Reflecting ${header} -> ${out}"
 			COMMAND_EXPAND_LISTS
@@ -66,6 +73,7 @@ function(reflect_types target)
 	# TODO: Should we have this? I think this stops all attribute-related warnings, not just unused annotations?
 	# TODO: Putting this here causes the generators to break. What the fuck.
 #	target_compile_options(${target} PRIVATE -Wno-attributes)
+#	target_link_options(${target} PRIVATE "-Wl,--whole-archive")
 endfunction()
 
 #	add_library(${reflected_target} OBJECT ${generated_sources})

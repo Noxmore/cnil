@@ -1,8 +1,9 @@
 #include "vec.h"
-#include "allocator.h"
+
+#include <stdlib.h>
 
 void internal_vec_free(erased_vec* arr) {
-	if (arr->data != nullptr) nil_free(arr->data);
+	if (arr->data != nullptr) free(arr->data);
 	memset(arr, 0, sizeof(erased_vec));
 }
 
@@ -17,7 +18,7 @@ void* internal_vec_reserve_item(erased_vec* arr, const usize item_size) {
 }
 
 void internal_vec_reallocate(erased_vec* arr, const usize item_size, const usize new_cap) {
-	arr->data = nil_realloc(arr->data, new_cap * item_size);
+	arr->data = realloc(arr->data, new_cap * item_size);
 	/*void* new_data = nil_alloc(new_cap * item_size);
 
 	if (arr->data != nullptr) {
@@ -41,10 +42,10 @@ void internal_vec_pop(erased_vec* arr, usize item_size, void* dst) {
 
 void internal_vec_copy_from(erased_vec* arr, const usize item_size, const void* src, const usize count) {
 	if (arr->cap < count) {
-		void* newData = nil_alloc(count * item_size);
+		void* newData = malloc(count * item_size);
 
 		if (arr->data != nullptr) {
-			nil_free(arr->data);
+			free(arr->data);
 		}
 
 		arr->cap = count;

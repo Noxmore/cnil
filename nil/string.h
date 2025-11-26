@@ -3,7 +3,7 @@
 #include "nint.h"
 #include "reflect.h"
 
-// Heap-allocated growable string type. Interface with like a vector.
+// Heap-allocated growable string type. Vector manipulation functions work on this type.
 typedef struct string {
 	/// A null terminated c string.
 	char* data;

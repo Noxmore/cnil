@@ -11,7 +11,7 @@ typedef struct type_info_builder {
 	string name;
 	bool no_namespace; // For types in the form of `typedef struct { ... } foo;`
 	vec(string) annotations;
-	const char* free_fn;
+	// const char* free_fn;
 
 	union {
 		vec(field_builder) struct_fields;

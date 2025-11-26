@@ -4,13 +4,14 @@
 #include "vec.h"
 // #include "internal/cwisstable.h"
 
+#include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
 
 /*static vec_anon(const type_info*) TYPE_REGISTRY;
 
-void nil_register_type_info__(type_info* type) {
-	type->index = TYPE_REGISTRY.len;
+void nil_register_type_info__(const type_info* type) {
+	*type->index = TYPE_REGISTRY.len;
 	vec_push(&TYPE_REGISTRY, type);
 }
 const type_info* type_registry_get(const usize index) {
@@ -23,17 +24,15 @@ usize type_registry_len() {
 	return TYPE_REGISTRY.len;
 }*/
 
-// Because of anonymous struct, this has to be a separate type from trait_registry.
-
-extern const type_info* __start_type_registry;
+/*extern const type_info* __start_type_registry;
 extern const type_info* __stop_type_registry;
 
 /*const type_info* get_type_registry() {
 	return __start_type_registry;
-}*/
+}#1#
 const type_info* type_registry_get(const usize index) {
 	/*if (index >= type_registry_len())
-		return nullptr;*/
+		return nullptr;#1#
 
 	return *(&__start_type_registry + index);
 }
@@ -41,17 +40,18 @@ usize type_registry_len() {
 	return &__stop_type_registry - &__start_type_registry;
 }
 
-inline usize type_registry_index(const type_info* type) {
+usize type_registry_index(const type_info* type) {
+	assert(*type->index != U32_MAX);
 	return *type->index;
 }
 
-__attribute__((constructor))
+__attribute__((constructor(101)))
 static void set_type_registry_indexes() {
 	// for (const type_info** it = &__start_type_registry; it < &__stop_type_registry; it++)
 	// 	*(*it)->index
 	for (usize i = 0; i < type_registry_len(); i++)
 		*type_registry_get(i)->index = i;
-}
+}*/
 /*usize type_registry_index(const type_info* type) {
 	return type - &__start_type_registry;
 }*/
@@ -61,6 +61,38 @@ static void set_type_registry_indexes() {
 typedef struct trait_registry {
 	trait_registry_map map;
 } trait_registry;*/
+
+static const char* short_type_kind(const type_info* type) {
+	switch (type->kind) {
+		case type_info_struct: return "struct";
+		case type_info_enum: return "enum";
+		case type_info_union: return "union";
+		default: return "";
+	}
+}
+
+void type_info_debug_print(const type_info* type, FILE* file) {
+	if (type->kind == type_info_opaque) {
+		fprintf(file, "%s (opaque type) [ size: %lu, align: %lu ]\n", type->name, type->size, type->align);
+		return;
+	}
+
+	fprintf(file, "%s %s [ size: %lu, align: %lu ] {\n", short_type_kind(type), type->name, type->size, type->align);
+
+	if (type->kind == type_info_struct || type->kind == type_info_union) {
+		for (usize i = 0; i < type->struct_data.field_count; i++) {
+			const type_info_field* field = &type->struct_data.fields[i];
+			fprintf(file, "\t%s%s%s %s;", field->is_const ? "const " : "", field->field_type->name, field->is_pointer ? "*" : "", field->name);
+		}
+	} else if (type->kind == type_info_enum) {
+		for (usize i = 0; i < type->enum_data.variant_count; i++) {
+			const type_info_variant* variant = &type->enum_data.variants[i];
+			fprintf(file, "\t%s = %li,", variant->name, variant->value);
+		}
+	}
+
+	fprintf(file, "}\n");
+}
 
 void free_reflected(const type_info* type, void* data) {
 	const type_info_free_fn fn = get_reflected_free_fn(type);
@@ -192,7 +224,6 @@ void debug_reflected(const void* obj, const type_info* type) {
 		.align = alignof(T),                                                     \
 		.annotations = nullptr,                                                  \
 		.annotation_count = 0,                                                   \
-		.free = nullptr,                                                         \
 		.opaque_data = {                                                         \
 			.kind = KIND,                                                         \
 			.to_string = T##_to_string,                                           \
@@ -205,6 +236,7 @@ REFLECT_INTEGER(u16, "%u", type_info_opaque_uint)
 REFLECT_INTEGER(u32, "%u", type_info_opaque_uint)
 REFLECT_INTEGER(u64, "%lu", type_info_opaque_uint)
 REFLECT_INTEGER(usize, "%lu", type_info_opaque_uint)
+REFLECT_INTEGER(u128, "%w128u", type_info_opaque_sint) // TODO: Is this formatter implemented in Clang/GCC yet? If so, perhaps we should use it for all integers?
 
 REFLECT_INTEGER(uint, "%u", type_info_opaque_uint)
 REFLECT_INTEGER(ushort, "%u", type_info_opaque_uint)
@@ -216,6 +248,7 @@ REFLECT_INTEGER(s8, "%i", type_info_opaque_sint)
 REFLECT_INTEGER(s16, "%i", type_info_opaque_sint)
 REFLECT_INTEGER(s32, "%i", type_info_opaque_sint)
 REFLECT_INTEGER(s64, "%li", type_info_opaque_sint)
+REFLECT_INTEGER(s128, "%w128d", type_info_opaque_sint)
 
 REFLECT_INTEGER(int, "%i", type_info_opaque_sint)
 REFLECT_INTEGER(short, "%i", type_info_opaque_sint)
@@ -235,7 +268,6 @@ DEFINE_TYPE_INFO(float,
 	.align = alignof(float),
 	.annotations = nullptr,
 	.annotation_count = 0,
-	.free = nullptr,
 	.opaque_data = {
 		.kind = type_info_opaque_real,
 		.to_string = float_to_string,
@@ -257,7 +289,6 @@ DEFINE_TYPE_INFO(double,
 	.align = alignof(double),
 	.annotations = nullptr,
 	.annotation_count = 0,
-	.free = nullptr,
 	.opaque_data = {
 		.kind = type_info_opaque_real,
 		.to_string = double_to_string,

@@ -154,9 +154,9 @@
 
 #define NIL_MACRO_VAR($name) NIL_CONCAT_2($name, __LINE__)
 
-#define defer(start, end) \
-	for (bool NIL_MACRO_VAR(i_) = (start, false); !NIL_MACRO_VAR(i_); (NIL_MACRO_VAR(i_) = true), end)
+#define SCOPED(START, END) \
+	for (bool NIL_MACRO_VAR(i_) = (START, false); !NIL_MACRO_VAR(i_); (NIL_MACRO_VAR(i_) = true), END)
 
-#define scope(end) \
-	for (bool NIL_MACRO_VAR(i_) = false; !NIL_MACRO_VAR(i_); (NIL_MACRO_VAR(i_) = true), end)
+#define DEFER(END) \
+	for (bool NIL_MACRO_VAR(i_) = false; !NIL_MACRO_VAR(i_); (NIL_MACRO_VAR(i_) = true), END)
 

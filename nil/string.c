@@ -1,8 +1,8 @@
 #include "string.h"
-#include "allocator.h"
 
-#include <stdio.h>
 #include <memory.h>
+#include <stdio.h>
+#include <stdlib.h>
 
 static void string_from_string(const char* src, char** end_ptr, void* dst) {
 	*(string*)dst = string_new(src);
@@ -48,6 +48,10 @@ DEFINE_TYPE_INFO(str,
 	},
 )
 
+__attribute__((constructor(NIL_TYPE_REGISTER_CONSTRUCTION_PRIORITY))) static void foo() {
+	printf("This is a test!");
+}
+
 string string_new(const char* str) {
 	if (str == nullptr)
 		return (string){0};
@@ -59,7 +63,7 @@ string string_new(const char* str) {
 
 	const usize cap = len + 1; // Account for the null-terminator.
 
-	char* data = nil_alloc(cap);
+	char* data = malloc(cap);
 	memcpy(data, str, cap);
 
 	return (string){
@@ -71,7 +75,7 @@ string string_new(const char* str) {
 
 void string_free(string* str) {
 	if (str->data)
-		nil_free(str->data);
+		free(str->data);
 	*str = (string) { 0 };
 }
 
@@ -90,7 +94,7 @@ str str_new(const char* s) {
 }
 
 string str_allocate(const str s) {
-	char* buf = nil_alloc(s.len + 1); // Account for null-terminator.
+	char* buf = malloc(s.len + 1); // Account for null-terminator.
 	memcpy(buf, s.data, s.len);
 
 	// Make sure null terminator is set.

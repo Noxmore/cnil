@@ -1,4 +1,4 @@
-// Work-in-progress alternate implementation of growable arrays where the metadata is stored in the place the pointer is stored at.
+// Unused alternate implementation of growable arrays where the metadata is stored in the place the pointer is stored at.
 
 #pragma once
 

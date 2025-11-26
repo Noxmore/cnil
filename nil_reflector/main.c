@@ -18,6 +18,7 @@ static void print_help() {
 }
 
 int main(const int argc, const char* const* argv) {
+	// printf("foo: %lu", type_registry_index(TYPE_INFO(string)));
 	if (argc < 3) {
 		print_help();
 		return 1;
