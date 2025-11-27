@@ -3,10 +3,11 @@
 #include "nint.h"
 #include "reflect.h"
 
-// Heap-allocated growable string type. Vector manipulation functions work on this type.
+// Heap-allocated growable string type.
 typedef struct string {
 	/// A null terminated c string.
 	char* data;
+	// Length of the string, not including the null terminator.
 	usize len;
 	usize cap;
 } string;

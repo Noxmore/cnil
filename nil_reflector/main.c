@@ -1,4 +1,6 @@
+#include <limits.h>
 #include <stdio.h>
+#include <stdlib.h>
 
 #include "data.h"
 #include "parse.h"
@@ -31,8 +33,17 @@ int main(const int argc, const char* const* argv) {
 
 	reflect_ctx ctx = {0};
 
+	char canonical_file_path[PATH_MAX];
+	realpath(src_path, canonical_file_path);
+	ctx.canonical_file_path = canonical_file_path;
+
 	// Parse reflected types out of the header file.
 	parse_file(src_path, &ctx, argv + 1, argc - 3);
+
+	if (ctx.had_error) {
+		reflect_ctx_free(&ctx);
+		return 1;
+	}
 
 	// Put the definitions into an implementation file.
 	FILE* output = fopen(out_path, "w");

@@ -1,13 +1,14 @@
 #include "parse.h"
 
-#include <stdlib.h>
-#include <stdio.h>
-#include <string.h>
 #include <clang-c/Index.h>
+#include <limits.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 
 #include "nil/ansi_colors.h"
-#include "nil/string.h"
 #include "nil/panic.h"
+#include "nil/string.h"
 
 /*static void debug_display_name(CXCursor cursor) {
 	const CXString debug = clang_getCursorDisplayName(cursor);
@@ -85,6 +86,7 @@ static enum CXChildVisitResult reflect_type(CXCursor cursor, CXCursor parent, CX
 	const enum CXCursorKind kind = clang_getCursorKind(cursor);
 
 	if (kind == CXCursor_AnnotateAttr) {
+		// Attempt to parse special
 		const CXString display_name = clang_getCursorDisplayName(cursor);
 		if (strcmp(clang_getCString(display_name), NIL_ANNOTATION_GENERATE_REFLECTION) == 0)
 			return CXChildVisit_Continue;
@@ -97,6 +99,7 @@ static enum CXChildVisitResult reflect_type(CXCursor cursor, CXCursor parent, CX
 			nil_split_next(&splitter, &split)
 		) {
 			type->free_fn = str_allocate(split);
+			return CXChildVisit_Continue;
 		}
 
 		clang_disposeString(display_name);
@@ -179,7 +182,29 @@ static enum CXChildVisitResult is_marked_for_reflection(CXCursor cursor, CXCurso
 	return CXChildVisit_Continue;
 }
 
+static bool is_in_header(CXCursor cursor, const reflect_ctx* ctx) {
+	CXFile file;
+	unsigned line, column, offset;
+	clang_getExpansionLocation(clang_getCursorLocation(cursor), &file, &line, &column, &offset);
+
+	const CXString filename = clang_getFileName(file);
+	if (clang_getCString(filename) == nullptr) {
+		return true;
+	}
+	char canonical_cursor_file_path[PATH_MAX];
+	realpath(clang_getCString(filename), canonical_cursor_file_path);
+	clang_disposeString(filename);
+
+	return strcmp(canonical_cursor_file_path, ctx->canonical_file_path) != 0;
+}
+
 static enum CXChildVisitResult search_for_reflected_types(CXCursor cursor, CXCursor parent, CXClientData client_data) {
+	reflect_ctx* ctx = client_data;
+
+	// if (clang_Location_isFromMainFile(clang_getCursorLocation(cursor)) != 0)
+	// 	return CXChildVisit_Continue;
+	if (is_in_header(cursor, ctx))
+		return CXChildVisit_Continue;
 	// clang_getCursor
 	// Allocate a CXString representing the name of the current cursor
 
@@ -222,8 +247,6 @@ static enum CXChildVisitResult search_for_reflected_types(CXCursor cursor, CXCur
 			if (type_cursor_kind != CXCursor_StructDecl && type_cursor_kind != CXCursor_EnumDecl && type_cursor_kind != CXCursor_UnionDecl)
 				return CXChildVisit_Continue;
 
-			reflect_ctx* ctx = client_data;
-
 			type_info_builder builder = {0};
 			builder.kind = cursor_kind_to_type_info_kind(type_cursor_kind);
 			builder.name = cursor_display_name(type_cursor);
@@ -246,15 +269,48 @@ static enum CXChildVisitResult search_for_reflected_types(CXCursor cursor, CXCur
 	return CXChildVisit_Recurse;
 }
 
+// Yes. This is stupid, and is on necessary on _some_ setups. No clue why.
+static void get_clang_resource_dir(char* resource_dir, const int resource_dir_size) {
+	FILE* fp = popen("clang -print-resource-dir", "r");
+	if (fp && fgets(resource_dir, resource_dir_size, fp)) {
+		// Strip newline
+		char *nl = strchr(resource_dir, '\n');
+		if (nl) *nl = 0;
+	}
+	pclose(fp);
+}
+
 void parse_file(const char* file_path, reflect_ctx* ctx, const char* const* command_line_args, const int command_line_arg_count) {
+	/*printf("Command line args: ");
+	for (usize i = 0; i < command_line_arg_count; i++) {
+		printf("%s ", command_line_args[i]);
+	}*/
+
+	// HACK: This should be set automatically, but on some systems it doesn't!
+	char resource_dir[4096];
+	get_clang_resource_dir(resource_dir, sizeof(resource_dir));
+	const char** command_line_args_hack = malloc(sizeof(const char*) * (command_line_arg_count + 2));
+	memcpy(command_line_args_hack, command_line_args, sizeof(const char*) * command_line_arg_count);
+	command_line_args_hack[command_line_arg_count] = "-resource-dir";
+	command_line_args_hack[command_line_arg_count + 1] = resource_dir;
+	/*for (usize i = 0; i < command_line_arg_count; i++) {
+		command_line_args_hack[i] = command_line_args[i];
+	}*/
+
 	CXIndex index = clang_createIndex(0, 0); //Create index
 	CXTranslationUnit unit;
 	const enum CXErrorCode parse_error = clang_parseTranslationUnit2(
 		index,
-		file_path, command_line_args, command_line_arg_count,
+		file_path, command_line_args_hack, command_line_arg_count+2,
+		// file_path, command_line_args, command_line_arg_count,
 		nullptr, 0,
-		CXTranslationUnit_SkipFunctionBodies,
+		// CXTranslationUnit_SkipFunctionBodies | CXTranslationUnit_IgnoreNonErrorsFromIncludedFiles | CXTranslationUnit_Incomplete,
+		// CXTranslationUnit_SkipFunctionBodies | CXTranslationUnit_KeepGoing,
+		CXTranslationUnit_SkipFunctionBodies | CXTranslationUnit_IgnoreNonErrorsFromIncludedFiles | CXTranslationUnit_KeepGoing,
+		// CXTranslationUnit_None,
 		&unit);
+
+	free(command_line_args_hack);
 
 	if (parse_error != CXError_Success) {
 		panic("Unable to parse translation unit %s with error code %u. Quitting.", file_path, parse_error);
@@ -270,6 +326,8 @@ void parse_file(const char* file_path, reflect_ctx* ctx, const char* const* comm
 		const char* style = severity == CXDiagnostic_Error || severity == CXDiagnostic_Fatal ? ANSI_STYLE(RED) : ANSI_STYLE(YELLOW);
 		fprintf(stderr, "%s%s" ANSI_RESET "\n", style, clang_getCString(string));
 
+		if (severity == CXDiagnostic_Error)
+			ctx->had_error = true;
 
 		clang_disposeString(string);
 		clang_disposeDiagnostic(diag);

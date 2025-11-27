@@ -39,8 +39,8 @@ typedef struct field_builder {
 void field_builder_free(field_builder* builder);
 
 typedef struct reflect_ctx {
-	// FILE* out;
 	vec(type_info_builder) types;
-	// const char* current_typename;
+	const char* canonical_file_path;
+	bool had_error;
 } reflect_ctx;
 void reflect_ctx_free(reflect_ctx* ctx);

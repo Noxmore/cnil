@@ -64,7 +64,12 @@ static void write_parsed_type(FILE* file, const type_info_builder* type, const u
 
 	write_annotations(file, body_indent, "\n", type->annotations.data, type->annotations.len);
 
-	// fputs(body_indent, file); fprintf(file, ".free = %s,\n", type->free_fn == nullptr ? "nullptr" : type->free_fn);
+	fputs(body_indent, file);
+	if (type->free_fn.data == nullptr) {
+		fprintf(file, ".free = nullptr,\n");
+	} else {
+		fprintf(file, ".free = (type_info_free_fn)%s,\n", type->free_fn.data);
+	}
 
 	if (type->kind == type_info_struct || type->kind == type_info_union) {
 		fputs(body_indent, file); fprintf(file, ".struct_data.field_count = %lu,\n", type->struct_fields.len);

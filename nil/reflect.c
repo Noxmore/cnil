@@ -8,59 +8,15 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-/*static vec_anon(const type_info*) TYPE_REGISTRY;
+#include "panic.h"
 
-void nil_register_type_info__(const type_info* type) {
-	*type->index = TYPE_REGISTRY.len;
-	vec_push(&TYPE_REGISTRY, type);
-}
-const type_info* type_registry_get(const usize index) {
-	if (index >= TYPE_REGISTRY.len)
-		return nullptr;
-
-	return TYPE_REGISTRY.data[index];
-}
-usize type_registry_len() {
-	return TYPE_REGISTRY.len;
-}*/
-
-/*extern const type_info* __start_type_registry;
-extern const type_info* __stop_type_registry;
-
-/*const type_info* get_type_registry() {
-	return __start_type_registry;
-}#1#
-const type_info* type_registry_get(const usize index) {
-	/*if (index >= type_registry_len())
-		return nullptr;#1#
-
-	return *(&__start_type_registry + index);
-}
-usize type_registry_len() {
-	return &__stop_type_registry - &__start_type_registry;
-}
-
-usize type_registry_index(const type_info* type) {
-	assert(*type->index != U32_MAX);
-	return *type->index;
-}
-
-__attribute__((constructor(101)))
-static void set_type_registry_indexes() {
-	// for (const type_info** it = &__start_type_registry; it < &__stop_type_registry; it++)
-	// 	*(*it)->index
-	for (usize i = 0; i < type_registry_len(); i++)
-		*type_registry_get(i)->index = i;
-}*/
-/*usize type_registry_index(const type_info* type) {
-	return type - &__start_type_registry;
-}*/
-
-/*CWISS_DECLARE_FLAT_HASHMAP(trait_registry_map, const type_info*, const void*);
-
-typedef struct trait_registry {
-	trait_registry_map map;
-} trait_registry;*/
+#define COLOR_COMMENT ANSI_STYLE(BRIGHT_BLACK)
+#define COLOR_KEYWORD ANSI_STYLE(RED)
+#define COLOR_NUMBER ANSI_STYLE(MAGENTA)
+#define COLOR_STRING ANSI_STYLE(GREEN)
+#define COLOR_TYPE ANSI_STYLE(YELLOW)
+#define COLOR_ENUM ANSI_STYLE(CYAN)
+#define COLOR_ERROR ANSI_STYLE(RED)
 
 static const char* short_type_kind(const type_info* type) {
 	switch (type->kind) {
@@ -71,23 +27,30 @@ static const char* short_type_kind(const type_info* type) {
 	}
 }
 
+// #define SIZE_ALIGN_FMT "[ size: "COLOR_NUMBER"%lu"ANSI_RESET", align: "COLOR_NUMBER"%lu"ANSI_RESET" ]"
+#define SIZE_ALIGN_FMT COLOR_COMMENT"/* size: %lu, align: %lu */"ANSI_RESET
+
 void type_info_debug_print(const type_info* type, FILE* file) {
 	if (type->kind == type_info_opaque) {
-		fprintf(file, "%s (opaque type) [ size: %lu, align: %lu ]\n", type->name, type->size, type->align);
+		fprintf(file, COLOR_KEYWORD"%s"COLOR_ENUM" (primitive) " SIZE_ALIGN_FMT "\n", type->name, type->size, type->align);
 		return;
 	}
 
-	fprintf(file, "%s %s [ size: %lu, align: %lu ] {\n", short_type_kind(type), type->name, type->size, type->align);
+	fprintf(file, COLOR_KEYWORD"%s "COLOR_TYPE"%s " SIZE_ALIGN_FMT" {\n", short_type_kind(type), type->name, type->size, type->align);
 
 	if (type->kind == type_info_struct || type->kind == type_info_union) {
 		for (usize i = 0; i < type->struct_data.field_count; i++) {
 			const type_info_field* field = &type->struct_data.fields[i];
-			fprintf(file, "\t%s%s%s %s;\n", field->is_const ? "const " : "", field->field_type->name, field->is_pointer ? "*" : "", field->name);
+			fprintf(file, "\t%s%s%s"ANSI_RESET"%s %s;\n", field->is_const ? COLOR_KEYWORD"const " : "",
+				field->field_type->kind == type_info_opaque ? COLOR_KEYWORD : COLOR_TYPE,
+				field->field_type->name,
+				field->is_pointer ? "*" : "",
+				field->name);
 		}
 	} else if (type->kind == type_info_enum) {
 		for (usize i = 0; i < type->enum_data.variant_count; i++) {
 			const type_info_variant* variant = &type->enum_data.variants[i];
-			fprintf(file, "\t%s = %li,\n", variant->name, variant->value);
+			fprintf(file, "\t"COLOR_ENUM"%s"ANSI_RESET" = "COLOR_NUMBER"%li"ANSI_RESET",\n", variant->name, variant->value);
 		}
 	}
 
@@ -128,6 +91,9 @@ type_registry* type_registry_new_with(const usize reserve) {
 }
 
 void type_register(type_registry* reg, const type_info* type) {
+	if (type_registry_contains(reg, type))
+		panic("Type registry already contains %s", type->name);
+
 	registry_index_map_insert(&reg->index_map, &(registry_index_map_Entry){ .key = type, .val = reg->linear.len });
 	vec_push(&reg->linear, type);
 }
@@ -179,14 +145,6 @@ static s64 get_any_sized_int(const void* data, const u8 type_size) {
 	// value >>= (s64)(sizeof(s64) - type_size);
 	return value;
 }
-
-#define COLOR_COMMENT ANSI_STYLE(BLACK)
-#define COLOR_KEYWORD ANSI_STYLE(RED)
-#define COLOR_NUMBER ANSI_STYLE(MAGENTA)
-#define COLOR_STRING ANSI_STYLE(GREEN)
-#define COLOR_TYPE ANSI_STYLE(YELLOW)
-#define COLOR_ENUM ANSI_STYLE(CYAN)
-#define COLOR_ERROR ANSI_STYLE(RED)
 
 static void debug_reflected_recursive(const void* obj, const type_info* type, const u32 depth) {
 	if (type == nullptr) {

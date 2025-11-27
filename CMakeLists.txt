@@ -1,5 +1,3 @@
-# TODO: Include https://github.com/taviso/swisstable?
-
 cmake_minimum_required(VERSION 3.31)
 project(cnil C)
 
@@ -44,6 +42,14 @@ target_link_libraries(nil_reflector PRIVATE nil)
 target_include_directories(nil_reflector PRIVATE .)
 
 function(reflect_types target)
+#	get_property(system_dirs TARGET ${target} PROPERTY INTERFACE_SYSTEM_INCLUDE_DIRECTORIES)
+#	set(sys_include "$<TARGET_PROPERTY:${target},INTERFACE_SYSTEM_INCLUDE_DIRECTORIES>")
+#	message("System include dirs: ${sys_include}")
+#	get_property(dirs TARGET ${target} PROPERTY INCLUDE_DIRECTORIES)
+#	foreach(dir ${dirs})
+#		message(STATUS "dir='${dir}'")
+#	endforeach()
+
 	set(generated_sources "")
 	foreach(header ${ARGN})
 		get_filename_component(filename "${header}" NAME_WE)
@@ -51,9 +57,10 @@ function(reflect_types target)
 
 		# If set wrong, this can wipe header files. I don't know why, I really hope this doesn't happen again.
 		set(generator_flags
-			"$$<LIST:TRANSFORM,$<TARGET_PROPERTY:${target},INCLUDE_DIRECTORIES>,PREPEND,-I>"
-			"$$<LIST:TRANSFORM,$<TARGET_PROPERTY:${target},COMPILE_DEFINITIONS>,PREPEND,-D>"
-			"$$<LIST:TRANSFORM,$<TARGET_PROPERTY:${target},COMPILE_OPTIONS>,>"
+#			"$<LIST:TRANSFORM,$<TARGET_PROPERTY:${target},INTERFACE_SYSTEM_INCLUDE_DIRECTORIES>,PREPEND,-I>"
+			"$<LIST:TRANSFORM,$<TARGET_PROPERTY:${target},INCLUDE_DIRECTORIES>,PREPEND,-I>"
+			"$<LIST:TRANSFORM,$<TARGET_PROPERTY:${target},COMPILE_DEFINITIONS>,PREPEND,-D>"
+			"$<TARGET_PROPERTY:${target},COMPILE_OPTIONS>"
 		)
 
 		add_custom_command(
