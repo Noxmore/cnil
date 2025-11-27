@@ -2,26 +2,33 @@
 
 #include "nint.h"
 
-#define MIN_MAX_CLAMP_FNS(T) \
+#define NIL_BASIC_NUM_FNS(T) \
 	static inline T min_##T(T a, T b) { return a < b ? a : b; } \
 	static inline T max_##T(T a, T b) { return a > b ? a : b; } \
 	static inline T clamp_##T(T v, T min, T max) { return min_##T(max_##T(v, min), max); }
 
-MIN_MAX_CLAMP_FNS(u8)
-MIN_MAX_CLAMP_FNS(u16)
-MIN_MAX_CLAMP_FNS(u32)
-MIN_MAX_CLAMP_FNS(u64)
-MIN_MAX_CLAMP_FNS(usize)
+#define NIL_BASIC_INT_FNS(T) \
+	NIL_BASIC_NUM_FNS(T) \
+	static inline T sat_add_##T(T a, T b) { T res = a + b; res |= -(res < a); return res; } \
+	static inline T sat_sub_##T(T a, T b) { T res = a - b; res &= -(res <= a); return res; }
 
-MIN_MAX_CLAMP_FNS(s8)
-MIN_MAX_CLAMP_FNS(s16)
-MIN_MAX_CLAMP_FNS(s32)
-MIN_MAX_CLAMP_FNS(s64)
+NIL_BASIC_INT_FNS(u8)
+NIL_BASIC_INT_FNS(u16)
+NIL_BASIC_INT_FNS(u32)
+NIL_BASIC_INT_FNS(u64)
+NIL_BASIC_INT_FNS(u128)
+NIL_BASIC_INT_FNS(usize)
 
-MIN_MAX_CLAMP_FNS(float)
-MIN_MAX_CLAMP_FNS(double)
+NIL_BASIC_INT_FNS(s8)
+NIL_BASIC_INT_FNS(s16)
+NIL_BASIC_INT_FNS(s32)
+NIL_BASIC_INT_FNS(s64)
+NIL_BASIC_INT_FNS(s128)
 
-#define min($a, $b) _Generic(($a), \
+NIL_BASIC_NUM_FNS(float)
+NIL_BASIC_NUM_FNS(double)
+
+/*#define min($a, $b) _Generic(($a), \
 	u8: min_u8($a, $b),             \
 	u16: min_u16($a, $b),           \
 	u32: min_u32($a, $b),           \
@@ -58,6 +65,7 @@ MIN_MAX_CLAMP_FNS(double)
 	s64: clamp_s64($v, $min, $max),           \
 	float: clamp_float($v, $min, $max),       \
 	double: clamp_double($v, $min, $max)      \
-)
+)*/
 
-#undef MIN_MAX_CLAMP_FNS
+#undef NIL_BASIC_NUM_FNS
+#undef NIL_BASIC_INT_FNS

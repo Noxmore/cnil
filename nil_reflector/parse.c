@@ -5,8 +5,9 @@
 #include <string.h>
 #include <clang-c/Index.h>
 
-#include "nil/panic.h"
 #include "nil/ansi_colors.h"
+#include "nil/string.h"
+#include "nil/panic.h"
 
 /*static void debug_display_name(CXCursor cursor) {
 	const CXString debug = clang_getCursorDisplayName(cursor);
@@ -84,8 +85,21 @@ static enum CXChildVisitResult reflect_type(CXCursor cursor, CXCursor parent, CX
 	const enum CXCursorKind kind = clang_getCursorKind(cursor);
 
 	if (kind == CXCursor_AnnotateAttr) {
-		if (is_display_name_eq(cursor, NIL_ANNOTATION_GENERATE_REFLECTION))
+		const CXString display_name = clang_getCursorDisplayName(cursor);
+		if (strcmp(clang_getCString(display_name), NIL_ANNOTATION_GENERATE_REFLECTION) == 0)
 			return CXChildVisit_Continue;
+
+		nil_string_splitter splitter = nil_split_string(clang_getCString(display_name), "=");
+		str split;
+		if (
+			nil_split_next(&splitter, &split) &&
+			str_eq_cstr(split, NIL_ANNOTATION_REFLECT_FREE_PREFIX) &&
+			nil_split_next(&splitter, &split)
+		) {
+			type->free_fn = str_allocate(split);
+		}
+
+		clang_disposeString(display_name);
 
 		vec_push(&type->annotations, cursor_display_name(cursor));
 	} else if (kind == CXCursor_FieldDecl) {

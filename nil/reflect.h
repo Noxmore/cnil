@@ -43,10 +43,7 @@ typedef struct type_info {
 		type_info_kinds,
 	} kind;
 
-	bool mutable;
-	// Index into the type registry. This is a pointer to a static variable so that we can mutate it at ctor-time.
-	// Do not rely on this in functions with __attribute__((constructor)) UNLESS you specify a priority.
-	// u32* index;
+	bool mutable; // TODO: Should we remove this? It currently isn't used.
 
 	// Optional type name. Can be nullptr.
 	const char* name;
@@ -89,34 +86,28 @@ typedef struct type_info {
 } type_info;
 
 void type_info_debug_print(const type_info* type, FILE* file);
+bool type_info_contains_annotation(const type_info* type, const char* annotation);
 
 // If applicable, calls the reflected free function of `type` on `data`.
 void free_reflected(const type_info* type, void* data);
 
-
-/*#if defined(_WIN32) || defined(__CYGWIN__)
-	 // Windows PE/COFF format: use .data section with a common prefix.
-	 // NOTE: This assumes a GCC/Clang toolchain (like MinGW/MSYS2).
-	 #define NIL_REFLECTION_SECTION(name) __attribute__((section(".data." name)))
-#elif defined(__APPLE__)
-	 // macOS/iOS Mach-O format: uses __DATA,__section_name
-	 #define NIL_REFLECTION_SECTION(name) __attribute__((section("__DATA," name)))
-#elif defined(__linux__) || defined(__GNUC__)
-	 // Linux/Generic ELF format: standard .data.section_name
-	 #define NIL_REFLECTION_SECTION(name) __attribute__((section(".data." name)))
-#else
-	 #error "Unsupported platform for reflection section linking."
-#endif*/
-
 typedef struct type_registry type_registry;
+
+type_registry* type_registry_new();
+// Create a new type registry with an initial allocated size.
+type_registry* type_registry_new_with(usize reserve);
 
 void type_register(type_registry* reg, const type_info* type);
 usize type_registry_size(const type_registry* reg);
-usize type_registry_index(const type_registry* reg);
-const type_info* type_registry_get(usize index);
+// If this returns `nullptr`, `type` is not in this registry.
+const usize* type_registry_index(type_registry* reg, const type_info* type);
+bool type_registry_contains(const type_registry* reg, const type_info* type);
+const type_info* type_registry_get(const type_registry* reg, usize index);
 
-void type_register_trait(type_registry* reg, const type_info* trait_type, const void* trait_data);
-const void* type_registry_get_trait(const type_registry* reg, const type_info* trait_type);
+void type_registry_free(type_registry* reg);
+
+// void type_register_trait(type_registry* reg, const type_info* trait_type, const void* trait_data);
+// const void* type_registry_get_trait(const type_registry* reg, const type_info* trait_type);
 
 
 void nil_register_default_types(type_registry* reg);
@@ -135,17 +126,12 @@ usize type_registry_index(const type_info* type);*/
 
 // -- TRAITS -- //
 
-#define NIL_TYPE_REGISTER_CONSTRUCTION_PRIORITY 101
-#define NIL_TRAIT_CONSTRUCTION_PRIORITY 150
-#define TYPE_TRAIT_CONSTRUCTOR __attribute__((constructor(NIL_TRAIT_CONSTRUCTION_PRIORITY)))
-
-// Registers a free/destructor function for a reflected type. You should not call this manually. Use REFLECT_FREE_FN instead.
-void type_info_register_free_fn(const type_info* type, type_info_free_fn fn);
-// If `type` has a registered free/destructor function, returns it, else `nullptr`.
-type_info_free_fn get_reflected_free_fn(const type_info* type);
+// #define NIL_TYPE_REGISTER_CONSTRUCTION_PRIORITY 101
+// #define NIL_TRAIT_CONSTRUCTION_PRIORITY 150
+// #define TYPE_TRAIT_CONSTRUCTOR __attribute__((constructor(NIL_TRAIT_CONSTRUCTION_PRIORITY)))
 
 // Implementation. Do not use in header files.
-#define REFLECT_FREE_FN(T, FN) TYPE_TRAIT_CONSTRUCTOR static void NIL_GENERATED_COUNTER_NAME(reflect_destructor)() { type_info_register_free_fn(TYPE_INFO(T), (type_info_free_fn)FN); }
+// #define REFLECT_FREE_FN(T, FN) TYPE_TRAIT_CONSTRUCTOR static void NIL_GENERATED_COUNTER_NAME(reflect_destructor)() { type_info_register_free_fn(TYPE_INFO(T), (type_info_free_fn)FN); }
 
 /*typedef struct sparse_trait_registry {
 
@@ -163,13 +149,7 @@ type_info_free_fn get_reflected_free_fn(const type_info* type);
 #define NIL_TYPE_INFO_INDEX_NAME(T) type_info_index_$_##T
 #define DECLARE_TYPE_INFO(T) extern const type_info NIL_TYPE_INFO_NAME(T);
 
-#define DEFINE_TYPE_INFO(T, ...) \
-	static u32 NIL_TYPE_INFO_INDEX_NAME(T) = 0xFFFFFFFF; \
-	const type_info NIL_TYPE_INFO_NAME(T) = { .index = &NIL_TYPE_INFO_INDEX_NAME(T), __VA_ARGS__ }; \
-	int puts(const char*); \
-	__attribute__((used, section("type_registry"))) static const type_info* NIL_GENERATED_COUNTER_NAME(register_type_info) = &NIL_TYPE_INFO_NAME(T);
-	// __attribute__((constructor(NIL_TYPE_REGISTER_CONSTRUCTION_PRIORITY))) volatile static void NIL_GENERATED_COUNTER_NAME(register_type_info)() { puts(NIL_TYPE_INFO_NAME(T).name); nil_register_type_info__(&NIL_TYPE_INFO_NAME(T)); } \
-	// extern type_info NIL_TYPE_INFO_NAME(T); \
+#define DEFINE_TYPE_INFO(T, ...) const type_info NIL_TYPE_INFO_NAME(T) = { __VA_ARGS__ };
 
 #define NIL_ELABORATED_TYPE_OPTION(_1, _2, NAME, ...) NAME
 
@@ -182,11 +162,11 @@ type_info_free_fn get_reflected_free_fn(const type_info* type);
 // Automatic reflection.
 #define NIL_ANNOTATION_GENERATE_REFLECTION "auto_reflect"
 #define NIL_ANNOTATION_REFLECT_IGNORE "reflect_ignore"
-#define NIL_ANNOTATION_REFLECT_FREE_PREFIX "reflect_free="
+#define NIL_ANNOTATION_REFLECT_FREE_PREFIX "reflect_free"
 
 #define ANNOTATE(STRING) __attribute__((annotate(STRING)))
 #define REFLECT_IGNORE ANNOTATE(NIL_ANNOTATION_REFLECT_IGNORE)
-#define REFLECT_FREE(FN) ANNOTATE(NIL_ANNOTATION_REFLECT_FREE_PREFIX #FN)
+#define REFLECT_FREE(FN) ANNOTATE(NIL_ANNOTATION_REFLECT_FREE_PREFIX "=" #FN)
 
 #define NIL_REFLECTION_AUTO_REGISTER_MARKER(T) typedef T NIL_GENERATED_COUNTER_NAME(auto_register_marker) ANNOTATE(NIL_ANNOTATION_GENERATE_REFLECTION)
 

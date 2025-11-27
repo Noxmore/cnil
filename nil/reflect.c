@@ -2,7 +2,7 @@
 
 #include "ansi_colors.h"
 #include "vec.h"
-// #include "internal/cwisstable.h"
+#include "internal/cwisstable.h"
 
 #include <assert.h>
 #include <stdio.h>
@@ -82,35 +82,77 @@ void type_info_debug_print(const type_info* type, FILE* file) {
 	if (type->kind == type_info_struct || type->kind == type_info_union) {
 		for (usize i = 0; i < type->struct_data.field_count; i++) {
 			const type_info_field* field = &type->struct_data.fields[i];
-			fprintf(file, "\t%s%s%s %s;", field->is_const ? "const " : "", field->field_type->name, field->is_pointer ? "*" : "", field->name);
+			fprintf(file, "\t%s%s%s %s;\n", field->is_const ? "const " : "", field->field_type->name, field->is_pointer ? "*" : "", field->name);
 		}
 	} else if (type->kind == type_info_enum) {
 		for (usize i = 0; i < type->enum_data.variant_count; i++) {
 			const type_info_variant* variant = &type->enum_data.variants[i];
-			fprintf(file, "\t%s = %li,", variant->name, variant->value);
+			fprintf(file, "\t%s = %li,\n", variant->name, variant->value);
 		}
 	}
 
 	fprintf(file, "}\n");
 }
+bool type_info_contains_annotation(const type_info* type, const char* annotation) {
+	for (usize i = 0; i < type->annotation_count; i++) {
+		if (strcmp(type->annotations[i], annotation) == 0)
+			return true;
+	}
+
+	return false;
+}
 
 void free_reflected(const type_info* type, void* data) {
-	const type_info_free_fn fn = get_reflected_free_fn(type);
-	if (fn != nullptr) fn(data);
+	if (type->free != nullptr) type->free(data);
 }
 
-static type_info_free_fn* FREE_FUNCTIONS;
+CWISS_DECLARE_FLAT_HASHMAP(registry_index_map, const type_info*, usize);
 
-void type_info_register_free_fn(const type_info* type, type_info_free_fn fn) {
-	if (FREE_FUNCTIONS == nullptr)
-		FREE_FUNCTIONS = malloc(sizeof(*FREE_FUNCTIONS) * type_registry_len());
+typedef struct type_registry {
+	vec_anon(const type_info*) linear;
+	registry_index_map index_map;
+} type_registry;
 
-	FREE_FUNCTIONS[type_registry_index(type)] = fn;
+type_registry* type_registry_new() {
+	return type_registry_new_with(40); // Semi-random number. Doesn't matter that much.
 }
-type_info_free_fn get_reflected_free_fn(const type_info* type) {
-	return FREE_FUNCTIONS[type_registry_index(type)];
+
+type_registry* type_registry_new_with(const usize reserve) {
+	type_registry* reg = malloc(sizeof(type_registry));
+	memset(reg, 0, sizeof(type_registry));
+
+	vec_reserve(&reg->linear, reserve);
+	reg->index_map = registry_index_map_new(reserve);
+
+	return reg;
 }
 
+void type_register(type_registry* reg, const type_info* type) {
+	registry_index_map_insert(&reg->index_map, &(registry_index_map_Entry){ .key = type, .val = reg->linear.len });
+	vec_push(&reg->linear, type);
+}
+usize type_registry_size(const type_registry* reg) {
+	return reg->linear.len;
+}
+const usize* type_registry_index(type_registry* reg, const type_info* type) {
+	const auto iter = registry_index_map_find(&reg->index_map, &type);
+	const auto entry = registry_index_map_Iter_get(&iter);
+	return entry == nullptr ? nullptr : &entry->val;
+}
+bool type_registry_contains(const type_registry* reg, const type_info* type) {
+	return registry_index_map_contains(&reg->index_map, &type);
+}
+const type_info* type_registry_get(const type_registry* reg, const usize index) {
+	if (index >= reg->linear.len)
+		return nullptr;
+	return reg->linear.data[index];
+}
+
+void type_registry_free(type_registry* reg) {
+	vec_free(&reg->linear);
+	registry_index_map_destroy(&reg->index_map);
+	free(reg);
+}
 
 const char* reflect_enum_name_from_variant_value(const type_info* type, const s64 variant_value) {
 	if (type == nullptr) return nullptr;
