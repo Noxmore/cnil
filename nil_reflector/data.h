@@ -1,7 +1,7 @@
 #pragma once
 
 #include "nil/vec.h"
-#include "nil/string.h"
+#include "nil/reflect.h"
 
 typedef struct variant_builder variant_builder;
 typedef struct field_builder field_builder;

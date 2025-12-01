@@ -10,6 +10,20 @@
 
 #include "panic.h"
 
+void nil_integer_to_bytes(s64 value, u8* out, usize n) {
+	while (n--) {
+		out[n] = (uint8_t)value;
+		value >>= 8;
+	}
+}
+s64 nil_bytes_to_integer(const u8* in, const usize n) {
+	s64 value = 0;
+	for (usize i = 0; i < n; i++) {
+		value = (value << 8) | in[i];
+	}
+	return value;
+}
+
 #define COLOR_COMMENT ANSI_STYLE(BRIGHT_BLACK)
 #define COLOR_KEYWORD ANSI_STYLE(RED)
 #define COLOR_NUMBER ANSI_STYLE(MAGENTA)
@@ -131,20 +145,30 @@ const char* reflect_enum_name_from_variant_value(const type_info* type, const s6
 
 	return nullptr;
 }
+bool reflected_enum_contains_variant_value(const type_info* type, s64 variant_value) {
+	if (type == nullptr || type->kind != type_info_enum) return false;
+
+	for (usize i = 0; i < type->enum_data.variant_count; i++) {
+		if (variant_value == type->enum_data.variants[i].value)
+			return true;
+	}
+
+	return false;
+}
 
 static void indent(const u32 depth) {
 	for (u32 i = 0; i < depth; i++)
 		printf("  ");
 }
 
-static s64 get_any_sized_int(const void* data, const u8 type_size) {
+/*s64 nil_get_any_sized_int(const void* data, const u8 type_size) {
 	s64 value = 0;
 	memcpy(&value, data, type_size);
 	// Move the transferred bits to the right of the number.
 	// UPDATE: Apparently it is already aligned correctly?
 	// value >>= (s64)(sizeof(s64) - type_size);
 	return value;
-}
+}*/
 
 static void debug_reflected_recursive(const void* obj, const type_info* type, const u32 depth) {
 	if (type == nullptr) {
@@ -154,7 +178,7 @@ static void debug_reflected_recursive(const void* obj, const type_info* type, co
 
 	switch (type->kind) {
 		case type_info_struct:
-			if (type->name != nullptr) {
+			if (type->name.data != nullptr) {
 				printf(COLOR_KEYWORD "struct " COLOR_TYPE "%s " ANSI_RESET "{\n", type->name);
 			} else {
 				puts(COLOR_KEYWORD "struct" ANSI_RESET " {");
@@ -181,7 +205,7 @@ static void debug_reflected_recursive(const void* obj, const type_info* type, co
 
 			break;
 		case type_info_enum:
-			const s64 value = get_any_sized_int(obj, type->size);
+			const s64 value = nil_bytes_to_integer(obj, type->size);
 			const char* name = reflect_enum_name_from_variant_value(type, value);
 			if (name != nullptr)
 				printf(COLOR_ENUM "%s " COLOR_COMMENT "/* %li */", name, value);
@@ -194,7 +218,7 @@ static void debug_reflected_recursive(const void* obj, const type_info* type, co
 			else if (type->opaque_data.kind == type_info_opaque_string)
 				fputs(COLOR_STRING "\"", stdout);
 
-			type->opaque_data.to_string(stdout, obj);
+			type->conversions.to_string(obj, stdout);
 
 			if (type->opaque_data.kind == type_info_opaque_string)
 				fputc('\"', stdout);
@@ -210,25 +234,45 @@ void debug_reflected(const void* obj, const type_info* type) {
 }
 
 #define REFLECT_INTEGER(T, FMT, KIND)                                          \
-	static void T##_to_string(FILE* file, const void* ptr) {                    \
-		fprintf(file, FMT, *(T*)ptr);                                            \
+	static void T##_to_string(const void* self, FILE* file) {                   \
+		fprintf(file, FMT, *(T*)self);                                           \
 	}                                                                           \
-	static void T##_from_string(const char* src, char** end_ptr, void* dst) {   \
-		*(T*)dst = strtol(src, end_ptr, 10);                                     \
+	static double T##_to_floating(const void* self) {                           \
+		return (double)*(T*)self;                                                \
+	}                                                                           \
+	static s64 T##_to_integer(const void* self) {                               \
+		return (s64)*(T*)self;                                                   \
+	}                                                                           \
+	static bool T##_from_string(void* self, const str s) {                      \
+		if (s.len >= 30) return false;                                           \
+		char buf[30];                                                            \
+		memcpy(buf, s.data, s.len);                                              \
+		buf[s.len] = '\0';                                                       \
+		char* end;                                                               \
+		*(T*)self = strtol(buf, &end, 10);                                       \
+		return end != buf;                                                       \
+	}                                                                           \
+	static bool T##_from_floating(void* self, const double v) {                 \
+		*(T*)self = (T)v;                                                        \
+		return true;                                                             \
+	}                                                                           \
+	static bool T##_from_integer(void* self, const s64 v) {                     \
+		*(T*)self = (T)v;                                                        \
+		return true;                                                             \
 	}                                                                           \
 	DEFINE_TYPE_INFO(T,                                                         \
 		.kind = type_info_opaque,                                                \
-		.mutable = true,                                                         \
-		.name = #T,                                                              \
 		.size = sizeof(T),                                                       \
 		.align = alignof(T),                                                     \
-		.annotations = nullptr,                                                  \
-		.annotation_count = 0,                                                   \
-		.opaque_data = {                                                         \
-			.kind = KIND,                                                         \
+		.conversions = {                                                         \
 			.to_string = T##_to_string,                                           \
+			.to_floating = T##_to_floating,                                       \
+			.to_integer = T##_to_integer,                                         \
 			.from_string = T##_from_string,                                       \
+			.from_floating = T##_from_floating,                                   \
+			.from_integer = T##_from_integer,                                     \
 		},                                                                       \
+		.opaque_data.kind = KIND,                                                \
 	)
 
 REFLECT_INTEGER(u8, "%u", type_info_opaque_uint)
@@ -236,7 +280,7 @@ REFLECT_INTEGER(u16, "%u", type_info_opaque_uint)
 REFLECT_INTEGER(u32, "%u", type_info_opaque_uint)
 REFLECT_INTEGER(u64, "%lu", type_info_opaque_uint)
 REFLECT_INTEGER(usize, "%lu", type_info_opaque_uint)
-REFLECT_INTEGER(u128, "%w128u", type_info_opaque_sint) // TODO: Is this formatter implemented in Clang/GCC yet? If so, perhaps we should use it for all integers?
+REFLECT_INTEGER(u128, "%w128u", type_info_opaque_uint) // TODO: Is this formatter implemented in Clang/GCC yet? If so, perhaps we should use it for all integers?
 
 REFLECT_INTEGER(uint, "%u", type_info_opaque_uint)
 REFLECT_INTEGER(ushort, "%u", type_info_opaque_uint)
@@ -250,48 +294,130 @@ REFLECT_INTEGER(s32, "%i", type_info_opaque_sint)
 REFLECT_INTEGER(s64, "%li", type_info_opaque_sint)
 REFLECT_INTEGER(s128, "%w128d", type_info_opaque_sint)
 
-REFLECT_INTEGER(int, "%i", type_info_opaque_sint)
+REFLECT_INTEGER(char, "%i", type_info_opaque_sint)
 REFLECT_INTEGER(short, "%i", type_info_opaque_sint)
+REFLECT_INTEGER(int, "%i", type_info_opaque_sint)
 REFLECT_INTEGER(long, "%li", type_info_opaque_sint)
 
-static void float_to_string(FILE* file, const void* ptr) {
-	fprintf(file, "%f", *(float*)ptr);
+static void float_to_string(const void* self, FILE* file) {
+	fprintf(file, "%f", *(float*)self);
 }
-static void float_from_string(const char* src, char** end_ptr, void* dst) {
-	*(float*)dst = strtof(src, end_ptr);
+static double float_to_floating(const void* self) {
+	return (double)*(float*)self;
+}
+static s64 float_to_integer(const void* self) {
+	return (s64)*(float*)self;
+}
+static bool float_from_string(void* self, const str s) {
+	if (s.len >= 64) return false;
+	char buf[64];
+	memcpy(buf, s.data, s.len);
+	buf[s.len] = '\0';
+
+	char* end;
+	*(float*)self = strtof(buf, &end);
+	return end != buf;
+}
+static bool float_from_floating(void* self, const double v) {
+	*(float*)self = (float)v;
+	return true;
+}
+static bool float_from_integer(void* self, const s64 v) {
+	*(float*)self = (float)v;
+	return true;
 }
 DEFINE_TYPE_INFO(float,
 	.kind = type_info_opaque,
-	.mutable = true,
-	.name = "float",
 	.size = sizeof(float),
 	.align = alignof(float),
-	.annotations = nullptr,
-	.annotation_count = 0,
-	.opaque_data = {
-		.kind = type_info_opaque_real,
+	.conversions = {
 		.to_string = float_to_string,
+		.to_floating = float_to_floating,
+		.to_integer = float_to_integer,
 		.from_string = float_from_string,
+		.from_floating = float_from_floating,
+		.from_integer = float_from_integer,
 	},
+	.opaque_data.kind = type_info_opaque_real,
 )
 
-static void double_to_string(FILE* file, const void* ptr) {
-	fprintf(file, "%f", *(double*)ptr);
+static void double_to_string(const void* self, FILE* file) {
+	fprintf(file, "%f", *(double*)self);
 }
-static void double_from_string(const char* src, char** end_ptr, void* dst) {
-	*(double*)dst = strtof(src, end_ptr);
+static double double_to_floating(const void* self) {
+	return *(double*)self;
+}
+static s64 double_to_integer(const void* self) {
+	return (s64)*(double*)self;
+}
+static bool double_from_string(void* self, const str s) {
+	if (s.len >= 128) return false;
+	char buf[128];
+	memcpy(buf, s.data, s.len);
+	buf[s.len] = '\0';
+
+	char* end;
+	*(float*)self = strtof(buf, &end);
+	return end != buf;
+}
+static bool double_from_floating(void* self, const double v) {
+	*(double*)self = v;
+	return true;
+}
+static bool double_from_integer(void* self, const s64 v) {
+	*(double*)self = (double)v;
+	return true;
 }
 DEFINE_TYPE_INFO(double,
 	.kind = type_info_opaque,
-	.mutable = true,
-	.name = "double",
 	.size = sizeof(double),
 	.align = alignof(double),
-	.annotations = nullptr,
-	.annotation_count = 0,
-	.opaque_data = {
-		.kind = type_info_opaque_real,
+	.conversions = {
 		.to_string = double_to_string,
+		.to_floating = double_to_floating,
+		.to_integer = double_to_integer,
 		.from_string = double_from_string,
+		.from_floating = double_from_floating,
+		.from_integer = double_from_integer,
 	},
+	.opaque_data.kind = type_info_opaque_real,
+)
+
+static bool string_from_string(void* self, str s) {
+	*(string*)self = str_allocate(s);
+	return true;
+}
+static void string_to_string(const void* self, FILE* file) {
+	fputs(((string*)self)->data, file);
+}
+DEFINE_TYPE_INFO(string,
+	.kind = type_info_opaque,
+	.size = sizeof(string),
+	.align = alignof(string),
+	.free = (type_info_free_fn)string_free,
+	.conversions = {
+		.to_string = string_to_string,
+		.from_string = string_from_string,
+	},
+	.opaque_data.kind = type_info_opaque_string,
+)
+
+static bool str_from_string(void* self, str s) {
+	// TODO: This doesn't take ownership, should this function be nullptr?
+	*(str*)self = s;
+	return true;
+}
+static void str_to_string(const void* self, FILE* file) {
+	fputs(((str*)self)->data, file);
+}
+DEFINE_TYPE_INFO(str,
+	.kind = type_info_opaque,
+	.size = sizeof(str),
+	.align = alignof(str),
+	.free = nullptr,
+	.conversions = {
+		.to_string = str_to_string,
+		.from_string = str_from_string,
+	},
+	.opaque_data.kind = type_info_opaque_string,
 )

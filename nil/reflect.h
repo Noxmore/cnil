@@ -2,15 +2,20 @@
 
 #include "nint.h"
 #include "macro_utils.h"
+#include "string.h"
 
 #include <bits/types/FILE.h>
+
+void nil_integer_to_bytes(s64 value, u8* out, usize n);
+s64 nil_bytes_to_integer(const u8* in, usize n);
 
 typedef struct type_info type_info;
 
 typedef const char* const* type_info_annotations;
 
 typedef struct type_info_field {
-	const char* name;
+	// Name of the field. Null terminated.
+	str name;
 
 	type_info_annotations annotations;
 	usize annotation_count;
@@ -25,13 +30,25 @@ typedef struct type_info_field {
 
 // Reflected enum variant
 typedef struct type_info_variant {
-	const char* name;
+	str name;
 	s64 value;
 	type_info_annotations annotations;
 	usize annotation_count;
 } type_info_variant;
 
 typedef void (*type_info_free_fn)(void*);
+
+// `type_info` conversion functions. Mainly used for opaque/primitive types.
+// Any and all of these can be null, which signals "unimplemented" or "unsupported".
+typedef struct type_info_conversions {
+	// TODO: Improve this function, make it not need to rely on files. Perhaps a stream API could help?
+	void (*to_string)(const void* self, FILE* file);
+	double (*to_floating)(const void* self);
+	s64 (*to_integer)(const void* self);
+	bool (*from_string)(void* self, str s);
+	bool (*from_floating)(void* self, double v);
+	bool (*from_integer)(void* self, s64 v);
+} type_info_conversions;
 
 // Describes an in-memory data structure, providing a form of reflection. This is particularly useful for serialization.
 typedef struct type_info {
@@ -45,8 +62,8 @@ typedef struct type_info {
 
 	bool mutable; // TODO: Should we remove this? It currently isn't used.
 
-	// Optional type name. Can be nullptr.
-	const char* name;
+	// Optional null-terminated type name. Can be null.
+	str name;
 	usize size;
 	usize align;
 
@@ -55,6 +72,9 @@ typedef struct type_info {
 
 	// Custom free function. Can be nullptr.
 	type_info_free_fn free;
+
+	// Conversion functions. Mainly used for opaque/primitive types.
+	type_info_conversions conversions;
 
 	union {
 		struct {
@@ -79,8 +99,6 @@ typedef struct type_info {
 				type_info_opaque_string,
 				type_info_opaque_kinds,
 			} kind;
-			void (*to_string)(FILE*, const void*);
-			void (*from_string)(const char* src, char** end_ptr, void* dst);
 		} opaque_data;
 	};
 } type_info;
@@ -149,7 +167,7 @@ usize type_registry_index(const type_info* type);*/
 #define NIL_TYPE_INFO_INDEX_NAME(T) type_info_index_$_##T
 #define DECLARE_TYPE_INFO(T) extern const type_info NIL_TYPE_INFO_NAME(T);
 
-#define DEFINE_TYPE_INFO(T, ...) const type_info NIL_TYPE_INFO_NAME(T) = { __VA_ARGS__ };
+#define DEFINE_TYPE_INFO(T, ...) const type_info NIL_TYPE_INFO_NAME(T) = { .mutable = true, .name = s(#T), __VA_ARGS__ };
 
 #define NIL_ELABORATED_TYPE_OPTION(_1, _2, NAME, ...) NAME
 
@@ -163,10 +181,12 @@ usize type_registry_index(const type_info* type);*/
 #define NIL_ANNOTATION_GENERATE_REFLECTION "auto_reflect"
 #define NIL_ANNOTATION_REFLECT_IGNORE "reflect_ignore"
 #define NIL_ANNOTATION_REFLECT_FREE_PREFIX "reflect_free"
+#define NIL_ANNOTATION_DOC_PREFIX "doc"
 
 #define ANNOTATE(STRING) __attribute__((annotate(STRING)))
 #define REFLECT_IGNORE ANNOTATE(NIL_ANNOTATION_REFLECT_IGNORE)
 #define REFLECT_FREE(FN) ANNOTATE(NIL_ANNOTATION_REFLECT_FREE_PREFIX "=" #FN)
+#define DOC(DOC) ANNOTATE(NIL_ANNOTATION_DOC_PREFIX "=" DOC)
 
 #define NIL_REFLECTION_AUTO_REGISTER_MARKER(T) typedef T NIL_GENERATED_COUNTER_NAME(auto_register_marker) ANNOTATE(NIL_ANNOTATION_GENERATE_REFLECTION)
 
@@ -194,16 +214,26 @@ DECLARE_TYPE_INFO(s32)
 DECLARE_TYPE_INFO(s64)
 DECLARE_TYPE_INFO(s128)
 
-DECLARE_TYPE_INFO(int)
+DECLARE_TYPE_INFO(char)
 DECLARE_TYPE_INFO(short)
+DECLARE_TYPE_INFO(int)
 DECLARE_TYPE_INFO(long)
 
 DECLARE_TYPE_INFO(float)
 DECLARE_TYPE_INFO(double)
 
+DECLARE_TYPE_INFO(string)
+DECLARE_TYPE_INFO(str)
+
 // Attempts to get an enum variant's name from a variant value based on the specified codec.
 // Returns nullptr if either the codec is not a valid enum codec, or the variant_value is not in the codec.
 const char* reflect_enum_name_from_variant_value(const type_info* type, s64 variant_value);
+// Returns whether the enum represented by `type` contains a variant with the specified value.
+// If the type does not represent an enum, returns `false`.
+bool reflected_enum_contains_variant_value(const type_info* type, s64 variant_value);
+
+// Internal tool for converting an arbitrarily-sized integer from reflected types. Often used with `reflect_enum_name_from_variant_value`.
+// s64 nil_get_any_sized_int(const void* data, u8 type_size);
 
 // Prints an object out to the console with the specified codec.
 void debug_reflected(const void* obj, const type_info* type);

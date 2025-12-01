@@ -2,8 +2,6 @@
 
 #include "reflect.h"
 
-#include "string.h"
-
 #include <stdlib.h>
 
 void nil_register_default_types(type_registry* reg) {
@@ -22,8 +20,9 @@ void nil_register_default_types(type_registry* reg) {
 	type_register(reg, TYPE_INFO(s32));
 	type_register(reg, TYPE_INFO(s64));
 	type_register(reg, TYPE_INFO(s128));
-	type_register(reg, TYPE_INFO(int));
+	type_register(reg, TYPE_INFO(char));
 	type_register(reg, TYPE_INFO(short));
+	type_register(reg, TYPE_INFO(int));
 	type_register(reg, TYPE_INFO(long));
 	type_register(reg, TYPE_INFO(float));
 	type_register(reg, TYPE_INFO(double));

@@ -6,59 +6,17 @@
 #include <memory.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <sys/stat.h>
 
-static void string_from_string(const char* src, char** end_ptr, void* dst) {
-	*(string*)dst = string_new(src);
-}
-static void string_to_string(FILE* file, const void* src) {
-	fputs(((string*)src)->data, file);
-}
-DEFINE_TYPE_INFO(string,
-	.kind = type_info_opaque,
-	.mutable = true,
-	.name = "string",
-	.size = sizeof(string),
-	.align = alignof(string),
-	.annotations = nullptr,
-	.annotation_count = 0,
-	.free = (type_info_free_fn)string_free,
-	.opaque_data = {
-		.kind = type_info_opaque_string,
-		.to_string = string_to_string,
-		.from_string = string_from_string,
-	},
-)
-// REFLECT_FREE_FN(string, string_free)
-
-static void str_from_string(const char* src, char** end_ptr, void* dst) {
-	// TODO: This doesn't take ownership, should this function be nullptr?
-	*(str*)dst = str_new(src);
-}
-static void str_to_string(FILE* file, const void* src) {
-	fputs(((str*)src)->data, file);
-}
-DEFINE_TYPE_INFO(str,
-	.kind = type_info_opaque,
-	.mutable = false,
-	.name = "str",
-	.size = sizeof(str),
-	.align = alignof(str),
-	.free = nullptr,
-	.opaque_data = {
-		.kind = type_info_opaque_string,
-		.to_string = str_to_string,
-		.from_string = str_from_string,
-	},
-)
 
 string string_new(const char* str) {
 	if (str == nullptr)
-		return (string){0};
+		return EMPTY_STRING;
 
 	const usize len = strlen(str);
 
 	if (len == 0)
-		return (string){0};
+		return EMPTY_STRING;
 
 	const usize cap = len + 1; // Account for the null-terminator.
 
@@ -75,7 +33,7 @@ string string_new(const char* str) {
 void string_free(string* str) {
 	if (str->data)
 		free(str->data);
-	*str = (string) { 0 };
+	*str = EMPTY_STRING;
 }
 
 str string_as_slice(const string* s) {
@@ -83,6 +41,25 @@ str string_as_slice(const string* s) {
 		.data = s->data,
 		.len = s->len,
 	};
+}
+
+string read_string_from_file(FILE* file) {
+	struct stat file_stats;
+	if (fstat(fileno(file), &file_stats) != 0 || !S_ISREG(file_stats.st_mode))
+		return EMPTY_STRING;
+
+	string s;
+	s.cap = file_stats.st_size+1/*null terminator*/;
+	s.data = malloc(s.cap),
+	// Length will be determined after reading just in case the file has a null terminator.
+	// I'm not 100% sure this should be the behavior forever, but currently `string`s have to be null terminated.
+
+	fread(s.data, file_stats.st_size, 1, file);
+	s.data[file_stats.st_size] = '\0';
+
+	s.len = strlen(s.data);
+
+	return s;
 }
 
 str str_new(const char* s) {
@@ -112,7 +89,7 @@ bool str_is_cstr(const str s) {
 
 str str_slice(const str s, const usize from, const usize to) {
 	if (to <= from)
-		return (str){0};
+		return EMPTY_STR;
 	return str_slice_from(str_slice_to(s, to), from);
 	// const usize from_offset = min_usize(from, s.len);
 	// return (str){ .data = s.data + from_offset, .len = s.len - from_offset };
@@ -126,11 +103,22 @@ str str_slice_from(const str s, const usize from) {
 }
 
 bool str_eq(const str a, const str b) {
-	return a.len == b.len && memcmp(a.data, b.data, a.len) == 0;
+	return
+			a.len == b.len &&
+			(
+				// This covers nullptr == nullptr.
+				a.data == b.data ||
+				// Make sure neither are nullptr, as passing nullptr into memcmp is undefined behavior.
+				(a.data && b.data && memcmp(a.data, b.data, a.len) == 0)
+			)
+		;
 }
 
 bool str_eq_cstr(const str a, const char* b) {
 	return strncmp(a.data, b, a.len) == 0;
+}
+void str_write(const str s, FILE* file) {
+	fwrite(s.data, s.len, 1, file);
 }
 
 // -- STRING UTILITIES -- //
@@ -152,6 +140,26 @@ bool cstr_starts_with(const char* s, const char* prefix) {
 }
 bool str_starts_with(const str s, const str prefix) {
 	return s.len >= prefix.len && memcmp(s.data, prefix.data, prefix.len) == 0;
+}
+void str_get_row_col(const str s, const usize pos, usize* row_out, usize* col_out) {
+	if (row_out) *row_out = 1;
+	if (col_out) *col_out = 1;
+	usize row = 1;
+	usize col = 1;
+
+	if (pos >= s.len)
+		return;
+	for (usize i = 0; i < pos; i++) {
+		if (s.data[i] == '\n') {
+			col = 1;
+			row++;
+		} else {
+			col++;
+		}
+	}
+
+	if (row_out) *row_out = row;
+	if (col_out) *col_out = col;
 }
 
 nil_string_splitter nil_split_string(const char* s, const char* pattern) {

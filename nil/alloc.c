@@ -17,8 +17,8 @@ typedef struct arena_block {
 
 
 
-nil_allocator create_arena() {
+/*nil_allocator create_arena() {
 	return (nil_allocator){
 
 	};
-}
+}*/

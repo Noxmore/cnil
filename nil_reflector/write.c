@@ -57,7 +57,7 @@ static void write_parsed_type(FILE* file, const type_info_builder* type, const u
 
 	fputs(body_indent, file); fprintf(file, ".kind = %s,\n", type_info_kind_as_string(type->kind));
 
-	fputs(body_indent, file); fprintf(file, ".name = \"%s\",\n", type->name.data);
+	// fputs(body_indent, file); fprintf(file, ".name = s(\"%s\"),\n", type->name.data);
 	const char* type_prefix = get_type_prefix(type);
 	fputs(body_indent, file); fprintf(file, ".size = sizeof(%s%s),\n", type_prefix, type->name.data);
 	fputs(body_indent, file); fprintf(file, ".align = alignof(%s%s),\n", type_prefix, type->name.data);
@@ -82,7 +82,7 @@ static void write_parsed_type(FILE* file, const type_info_builder* type, const u
 				const field_builder* field = &type->struct_fields.data[i];
 
 				indent(file, depth+2);
-				fprintf(file, "{ .name = \"%s\", ", field->name.data);
+				fprintf(file, "{ .name = s(\"%s\"), ", field->name.data);
 				write_annotations(file, "", " ", field->annotations.data, field->annotations.len);
 				fprintf(file, ".field_type = ");
 				if (field->anon_type != nullptr) {
@@ -110,7 +110,7 @@ static void write_parsed_type(FILE* file, const type_info_builder* type, const u
 				const variant_builder* variant = &type->enum_variants.data[i];
 
 				indent(file, depth+2);
-				fprintf(file, "{ .name = \"%s\", ", variant->name.data);
+				fprintf(file, "{ .name = s(\"%s\"), ", variant->name.data);
 				fprintf(file, ".value = %s, ", variant->name.data);
 				write_annotations(file, "", " ", variant->annotations.data, variant->annotations.len);
 				fprintf(file, "},\n");
