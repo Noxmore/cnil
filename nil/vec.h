@@ -1,13 +1,16 @@
 #pragma once
 
 #include "nint.h"
-#include <string.h>
-#include <stddef.h>
+// #include <string.h>
+// #include <stddef.h>
 
 // Heap-allocated growable array.
-#define vec(T) struct vec_$_##T { T* data; usize len; usize cap; }
-// Anonymous version of `Vec`
-#define vec_anon(T) struct vec { T* data; usize len; usize cap; }
+#define vec_named(T, NAME) struct vec_$_##NAME { T* data; usize len; usize cap; }
+// Heap-allocated growable array.
+#define vec(T) vec_named(T, T)
+// Like `vec`, but doesn't specify a struct name.
+// This can be useful when creating a vector of pointer types, but doesn't cover some cases that a named vector does. For those you should use `vec_named` or a typedef.
+#define vec_anon(T) struct { T* data; usize len; usize cap; }
 #define vec_free($arr) internal_vec_free((erased_vec*)($arr))
 #define vec_free_with($arr, FREE_FN) do { for (usize i = 0; i < ($arr)->len; i++) { FREE_FN(&($arr)->data[i]); } vec_free($arr); } while (false)
 // Reserves a new item onto the vector and returns the pointer to it.
@@ -38,8 +41,8 @@
 /// Type-erased vector. Mainly used internally, but can also bee used for runtime-defined/runtime-sized types.
 typedef struct erased_vec {
 	void* data;
-	size_t len;
-	size_t cap;
+	usize len;
+	usize cap;
 } erased_vec;
 
 void internal_vec_free(erased_vec* arr);

@@ -106,7 +106,7 @@ typedef struct type_info {
 void type_info_debug_print(const type_info* type, FILE* file);
 bool type_info_contains_annotation(const type_info* type, const char* annotation);
 
-// If applicable, calls the reflected free function of `type` on `data`.
+// If applicable, calls the reflected free function of `type` on `data`. Otherwise, recursively searches for the free function in fields.
 void free_reflected(const type_info* type, void* data);
 
 typedef struct type_registry type_registry;
@@ -168,6 +168,8 @@ usize type_registry_index(const type_info* type);*/
 #define DECLARE_TYPE_INFO(T) extern const type_info NIL_TYPE_INFO_NAME(T);
 
 #define DEFINE_TYPE_INFO(T, ...) const type_info NIL_TYPE_INFO_NAME(T) = { .mutable = true, .name = s(#T), __VA_ARGS__ };
+// `DEFINE_TYPE_INFO` can't automatically specify size and alignment because of type namespaces. This assumes T is in the global namespace.
+#define DEFINE_TYPEDEF_INFO(T, ...) DEFINE_TYPE_INFO(T, .size = sizeof(T), .align = alignof(T), __VA_ARGS__)
 
 #define NIL_ELABORATED_TYPE_OPTION(_1, _2, NAME, ...) NAME
 
@@ -225,9 +227,9 @@ DECLARE_TYPE_INFO(double)
 DECLARE_TYPE_INFO(string)
 DECLARE_TYPE_INFO(str)
 
-// Attempts to get an enum variant's name from a variant value based on the specified codec.
-// Returns nullptr if either the codec is not a valid enum codec, or the variant_value is not in the codec.
-const char* reflect_enum_name_from_variant_value(const type_info* type, s64 variant_value);
+// Attempts to get an enum variant's name from a variant value based on the specified codec. The resulting str will be null-terminated.
+// Returns a null str if either the codec is not a valid enum codec, or the variant_value is not in the codec.
+str reflect_enum_name_from_variant_value(const type_info* type, s64 variant_value);
 // Returns whether the enum represented by `type` contains a variant with the specified value.
 // If the type does not represent an enum, returns `false`.
 bool reflected_enum_contains_variant_value(const type_info* type, s64 variant_value);

@@ -4,8 +4,8 @@ project(cnil C)
 set(CMAKE_C_STANDARD 23)
 set(CMAKE_EXPORT_COMPILE_COMMANDS)
 
-include(FetchContent)
-set(FETCHCONTENT_QUIET FALSE)
+#include(FetchContent)
+#set(FETCHCONTENT_QUIET FALSE)
 #FetchContent_Declare(
 #	mlib
 #	GIT_REPOSITORY https://github.com/P-p-H-d/mlib.git

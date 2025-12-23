@@ -79,6 +79,8 @@ typedef struct non_tree {
 	char* contents;
 } non_tree;
 
+void non_tree_debug(const non_tree* tree);
+
 /*typedef enum non_cursor_kind : u8 {
 	non_string,
 	non_char,
@@ -107,6 +109,7 @@ typedef struct non_result {
 	enum non_error {
 		non_failed_to_read_file,
 		non_unclosed_opener,
+		non_unexpected_closer,
 		non_incomplete_char,
 		non_incomplete_pair,
 		non_invalid_escape_character,

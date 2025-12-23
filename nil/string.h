@@ -72,5 +72,5 @@ typedef struct nil_string_splitter {
 	const char* cursor;
 } nil_string_splitter;
 
-nil_string_splitter nil_split_string(const char* s, const char* pattern);
+nil_string_splitter nil_split_cstr(const char* s, const char* pattern);
 bool nil_split_next(nil_string_splitter* splitter, str* substring);

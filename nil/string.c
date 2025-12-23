@@ -162,7 +162,7 @@ void str_get_row_col(const str s, const usize pos, usize* row_out, usize* col_ou
 	if (col_out) *col_out = col;
 }
 
-nil_string_splitter nil_split_string(const char* s, const char* pattern) {
+nil_string_splitter nil_split_cstr(const char* s, const char* pattern) {
 	assert(s != nullptr);
 	assert(pattern != nullptr);
 	return (nil_string_splitter){ .src = s, .pattern = pattern, .cursor = s };

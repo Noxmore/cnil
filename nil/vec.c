@@ -1,6 +1,7 @@
 #include "vec.h"
 
 #include <stdlib.h>
+#include <string.h>
 
 void internal_vec_free(erased_vec* arr) {
 	if (arr->data != nullptr) free(arr->data);

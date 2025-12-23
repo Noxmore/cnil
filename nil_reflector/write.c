@@ -1,6 +1,7 @@
 #include "write.h"
 
 #include <stdio.h>
+#include <string.h>
 
 static void indent(FILE* file, const u32 depth) {
 	for (u32 i = 0; i < depth; i++)

@@ -46,25 +46,25 @@ static const char* short_type_kind(const type_info* type) {
 
 void type_info_debug_print(const type_info* type, FILE* file) {
 	if (type->kind == type_info_opaque) {
-		fprintf(file, COLOR_KEYWORD"%s"COLOR_ENUM" (primitive) " SIZE_ALIGN_FMT "\n", type->name, type->size, type->align);
+		fprintf(file, COLOR_KEYWORD"%s"COLOR_ENUM" (primitive) " SIZE_ALIGN_FMT "\n", type->name.data, type->size, type->align);
 		return;
 	}
 
-	fprintf(file, COLOR_KEYWORD"%s "COLOR_TYPE"%s " SIZE_ALIGN_FMT" {\n", short_type_kind(type), type->name, type->size, type->align);
+	fprintf(file, COLOR_KEYWORD"%s "COLOR_TYPE"%s " SIZE_ALIGN_FMT" {\n", short_type_kind(type), type->name.data, type->size, type->align);
 
 	if (type->kind == type_info_struct || type->kind == type_info_union) {
 		for (usize i = 0; i < type->struct_data.field_count; i++) {
 			const type_info_field* field = &type->struct_data.fields[i];
 			fprintf(file, "\t%s%s%s"ANSI_RESET"%s %s;\n", field->is_const ? COLOR_KEYWORD"const " : "",
 				field->field_type->kind == type_info_opaque ? COLOR_KEYWORD : COLOR_TYPE,
-				field->field_type->name,
+				field->field_type->name.data,
 				field->is_pointer ? "*" : "",
-				field->name);
+				field->name.data);
 		}
 	} else if (type->kind == type_info_enum) {
 		for (usize i = 0; i < type->enum_data.variant_count; i++) {
 			const type_info_variant* variant = &type->enum_data.variants[i];
-			fprintf(file, "\t"COLOR_ENUM"%s"ANSI_RESET" = "COLOR_NUMBER"%li"ANSI_RESET",\n", variant->name, variant->value);
+			fprintf(file, "\t"COLOR_ENUM"%s"ANSI_RESET" = "COLOR_NUMBER"%li"ANSI_RESET",\n", variant->name.data, variant->value);
 		}
 	}
 
@@ -80,7 +80,19 @@ bool type_info_contains_annotation(const type_info* type, const char* annotation
 }
 
 void free_reflected(const type_info* type, void* data) {
-	if (type->free != nullptr) type->free(data);
+	if (type->free != nullptr) {
+		type->free(data);
+		return;
+	}
+
+	// TODO: union support
+	if (type->kind != type_info_struct)
+		return;
+
+	for (usize i = 0; i < type->struct_data.field_count; i++) {
+		const type_info_field* field = &type->struct_data.fields[i];
+		free_reflected(field->field_type, data + field->struct_offset);
+	}
 }
 
 CWISS_DECLARE_FLAT_HASHMAP(registry_index_map, const type_info*, usize);
@@ -134,16 +146,16 @@ void type_registry_free(type_registry* reg) {
 	free(reg);
 }
 
-const char* reflect_enum_name_from_variant_value(const type_info* type, const s64 variant_value) {
-	if (type == nullptr) return nullptr;
-	if (type->kind != type_info_enum) return nullptr;
+str reflect_enum_name_from_variant_value(const type_info* type, const s64 variant_value) {
+	if (type == nullptr) return EMPTY_STR;
+	if (type->kind != type_info_enum) return EMPTY_STR;
 
 	for (usize i = 0; i < type->enum_data.variant_count; i++) {
 		if (variant_value == type->enum_data.variants[i].value)
 			return type->enum_data.variants[i].name;
 	}
 
-	return nullptr;
+	return EMPTY_STR;
 }
 bool reflected_enum_contains_variant_value(const type_info* type, s64 variant_value) {
 	if (type == nullptr || type->kind != type_info_enum) return false;
@@ -179,7 +191,7 @@ static void debug_reflected_recursive(const void* obj, const type_info* type, co
 	switch (type->kind) {
 		case type_info_struct:
 			if (type->name.data != nullptr) {
-				printf(COLOR_KEYWORD "struct " COLOR_TYPE "%s " ANSI_RESET "{\n", type->name);
+				printf(COLOR_KEYWORD "struct " COLOR_TYPE "%s " ANSI_RESET "{\n", type->name.data);
 			} else {
 				puts(COLOR_KEYWORD "struct" ANSI_RESET " {");
 			}
@@ -187,7 +199,7 @@ static void debug_reflected_recursive(const void* obj, const type_info* type, co
 			for (usize i = 0; i < type->struct_data.field_count; i++) {
 				indent(depth + 1);
 				const type_info_field* field = &type->struct_data.fields[i];
-				printf(".%s = ", field->name);
+				printf(".%s = ", field->name.data);
 
 				const void* field_ptr = obj + field->struct_offset;
 
@@ -206,9 +218,9 @@ static void debug_reflected_recursive(const void* obj, const type_info* type, co
 			break;
 		case type_info_enum:
 			const s64 value = nil_bytes_to_integer(obj, type->size);
-			const char* name = reflect_enum_name_from_variant_value(type, value);
-			if (name != nullptr)
-				printf(COLOR_ENUM "%s " COLOR_COMMENT "/* %li */", name, value);
+			const str name = reflect_enum_name_from_variant_value(type, value);
+			if (name.data != nullptr)
+				printf(COLOR_ENUM "%s " COLOR_COMMENT "/* %li */", name.data, value);
 			else
 				printf(COLOR_ERROR "<invalid variant value: %li>", value);
 			break;
@@ -260,10 +272,8 @@ void debug_reflected(const void* obj, const type_info* type) {
 		*(T*)self = (T)v;                                                        \
 		return true;                                                             \
 	}                                                                           \
-	DEFINE_TYPE_INFO(T,                                                         \
+	DEFINE_TYPEDEF_INFO(T,                                                         \
 		.kind = type_info_opaque,                                                \
-		.size = sizeof(T),                                                       \
-		.align = alignof(T),                                                     \
 		.conversions = {                                                         \
 			.to_string = T##_to_string,                                           \
 			.to_floating = T##_to_floating,                                       \
@@ -326,10 +336,8 @@ static bool float_from_integer(void* self, const s64 v) {
 	*(float*)self = (float)v;
 	return true;
 }
-DEFINE_TYPE_INFO(float,
+DEFINE_TYPEDEF_INFO(float,
 	.kind = type_info_opaque,
-	.size = sizeof(float),
-	.align = alignof(float),
 	.conversions = {
 		.to_string = float_to_string,
 		.to_floating = float_to_floating,
@@ -368,10 +376,8 @@ static bool double_from_integer(void* self, const s64 v) {
 	*(double*)self = (double)v;
 	return true;
 }
-DEFINE_TYPE_INFO(double,
+DEFINE_TYPEDEF_INFO(double,
 	.kind = type_info_opaque,
-	.size = sizeof(double),
-	.align = alignof(double),
 	.conversions = {
 		.to_string = double_to_string,
 		.to_floating = double_to_floating,
@@ -390,7 +396,7 @@ static bool string_from_string(void* self, str s) {
 static void string_to_string(const void* self, FILE* file) {
 	fputs(((string*)self)->data, file);
 }
-DEFINE_TYPE_INFO(string,
+DEFINE_TYPEDEF_INFO(string,
 	.kind = type_info_opaque,
 	.size = sizeof(string),
 	.align = alignof(string),
@@ -410,7 +416,7 @@ static bool str_from_string(void* self, str s) {
 static void str_to_string(const void* self, FILE* file) {
 	fputs(((str*)self)->data, file);
 }
-DEFINE_TYPE_INFO(str,
+DEFINE_TYPEDEF_INFO(str,
 	.kind = type_info_opaque,
 	.size = sizeof(str),
 	.align = alignof(str),
