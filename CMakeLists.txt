@@ -22,8 +22,9 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS)
 
 file(GLOB SRC_FILES CONFIGURE_DEPENDS nil/*.c)
 
-add_library(nil OBJECT ${SRC_FILES})
+add_library(nil STATIC ${SRC_FILES})
 target_include_directories(nil PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+#target_compile_options(nil PRIVATE --header-filter=internal/*.h)
 #target_link_options(nil PUBLIC "-T${CMAKE_SOURCE_DIR}/nil.ld")
 #target_link_options(nil PUBLIC "-T/d/_dev/_lib/c/cnil/nil.ld")
 #target_link_options(nil INTERFACE

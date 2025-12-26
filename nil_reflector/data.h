@@ -9,7 +9,10 @@ typedef struct field_builder field_builder;
 typedef struct type_info_builder {
 	enum type_info_kind kind;
 	string name;
-	bool no_namespace; // For types in the form of `typedef struct { ... } foo;`
+	string type_referral; // `struct foo` instead of `foo` if needed.
+	// bool indirect_type; // True if the type is anonymous. Will need a `typeof(...)` in places.
+	bool anonymous;
+	// bool no_namespace; // For types in the form of `typedef struct { ... } foo;`
 	vec(string) annotations;
 	string free_fn;
 
@@ -44,3 +47,5 @@ typedef struct reflect_ctx {
 	bool had_error;
 } reflect_ctx;
 void reflect_ctx_free(reflect_ctx* ctx);
+
+// u64 type_hash(const type_info_builder* type);

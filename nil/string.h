@@ -4,16 +4,17 @@
 
 #include <bits/types/FILE.h>
 
-// Heap-allocated growable string type.
+// Heap-allocated mutable string type.
 typedef struct string {
 	/// A null terminated c string.
 	char* data;
 	// Length of the string, not including the null terminator.
 	usize len;
+	// Length of the underlying buffer, including the null terminator.
 	usize cap;
 } string;
 // To make some syntax nicer, like returning an empty string from a function.
-constexpr string EMPTY_STRING = { .data = nullptr, .len = 0 };
+constexpr string EMPTY_STRING = { 0 };
 
 // String slice. Does not own the data contained within. Treat like a fat pointer.
 typedef struct str {
@@ -23,7 +24,7 @@ typedef struct str {
 	usize len;
 } str;
 // To make some syntax nicer, like returning an empty string from a function.
-constexpr str EMPTY_STR = { .data = nullptr, .len = 0 };
+constexpr str EMPTY_STR = { 0 };
 
 // Creates a static `str` slice from a string literal.
 #define s(LITERAL) (str){ .data = LITERAL, .len = sizeof(LITERAL)-1 }
@@ -31,6 +32,10 @@ constexpr str EMPTY_STR = { .data = nullptr, .len = 0 };
 // Creates a string via a null terminated C string.
 string string_new(const char* str);
 void string_free(string* str);
+/// Creates a new string with regular C formatting codes.
+string string_format(const char* fmt, ...) __attribute__((format(printf, 1, 2)));
+// Allocates a new string with the same contents as `s`. Does not take ownership.
+string string_clone(string s);
 str string_as_slice(const string* s);
 // Reads a string from a file, preallocating exactly how much data the file contains.
 // If any step of this process fails, returns an empty/null string.
@@ -53,8 +58,10 @@ str str_slice_from(str s, usize from);
 
 // Returns `true` if the contents of both strings are identical, else `false`.
 bool str_eq(str a, str b);
+// Version of `str_eq` that compares to a c string for ease of use, but is probably slightly slower.
 bool str_eq_cstr(str a, const char* b);
 
+// Little helper function that writes a `str` out to a file.
 void str_write(str s, FILE* file);
 
 // -- STRING UTILITIES -- //

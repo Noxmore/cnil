@@ -2,6 +2,8 @@
 
 #include "nint.h"
 
+// TODO: rework or remove?
+
 typedef struct slice {
 	void* const data;
 	const u32 len;

@@ -118,7 +118,7 @@ type_registry* type_registry_new_with(const usize reserve) {
 
 void type_register(type_registry* reg, const type_info* type) {
 	if (type_registry_contains(reg, type))
-		panic("Type registry already contains %s", type->name);
+		panic("Type registry already contains %s", type->name.data);
 
 	registry_index_map_insert(&reg->index_map, &(registry_index_map_Entry){ .key = type, .val = reg->linear.len });
 	vec_push(&reg->linear, type);
@@ -245,6 +245,11 @@ void debug_reflected(const void* obj, const type_info* type) {
 	fflush(stdout);
 }
 
+DEFINE_TYPEDEF_INFO(void,
+	.kind = type_info_opaque,
+	.opaque_data.kind = type_info_opaque_void,
+)
+
 #define REFLECT_INTEGER(T, FMT, KIND)                                          \
 	static void T##_to_string(const void* self, FILE* file) {                   \
 		fprintf(file, FMT, *(T*)self);                                           \
@@ -290,7 +295,7 @@ REFLECT_INTEGER(u16, "%u", type_info_opaque_uint)
 REFLECT_INTEGER(u32, "%u", type_info_opaque_uint)
 REFLECT_INTEGER(u64, "%lu", type_info_opaque_uint)
 REFLECT_INTEGER(usize, "%lu", type_info_opaque_uint)
-REFLECT_INTEGER(u128, "%w128u", type_info_opaque_uint) // TODO: Is this formatter implemented in Clang/GCC yet? If so, perhaps we should use it for all integers?
+REFLECT_INTEGER(u128, "%llu", type_info_opaque_uint)
 
 REFLECT_INTEGER(uint, "%u", type_info_opaque_uint)
 REFLECT_INTEGER(ushort, "%u", type_info_opaque_uint)
@@ -302,7 +307,7 @@ REFLECT_INTEGER(s8, "%i", type_info_opaque_sint)
 REFLECT_INTEGER(s16, "%i", type_info_opaque_sint)
 REFLECT_INTEGER(s32, "%i", type_info_opaque_sint)
 REFLECT_INTEGER(s64, "%li", type_info_opaque_sint)
-REFLECT_INTEGER(s128, "%w128d", type_info_opaque_sint)
+REFLECT_INTEGER(s128, "%lli", type_info_opaque_sint)
 
 REFLECT_INTEGER(char, "%i", type_info_opaque_sint)
 REFLECT_INTEGER(short, "%i", type_info_opaque_sint)
@@ -398,9 +403,7 @@ static void string_to_string(const void* self, FILE* file) {
 }
 DEFINE_TYPEDEF_INFO(string,
 	.kind = type_info_opaque,
-	.size = sizeof(string),
-	.align = alignof(string),
-	.free = (type_info_free_fn)string_free,
+	.free = (nil_free_fn)string_free,
 	.conversions = {
 		.to_string = string_to_string,
 		.from_string = string_from_string,
@@ -418,8 +421,6 @@ static void str_to_string(const void* self, FILE* file) {
 }
 DEFINE_TYPEDEF_INFO(str,
 	.kind = type_info_opaque,
-	.size = sizeof(str),
-	.align = alignof(str),
 	.free = nullptr,
 	.conversions = {
 		.to_string = str_to_string,

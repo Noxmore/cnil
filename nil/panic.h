@@ -2,7 +2,7 @@
 
 #include "macro_utils.h"
 
-void $_nil_panic(const char* fn, const char* at, const char* fmt, ...) __attribute__((__noreturn__)) __attribute__((__cold__));
+void $_nil_panic(const char* fn, const char* at, const char* fmt, ...) __attribute__((__noreturn__)) __attribute__((__cold__))  __attribute__((format(printf, 3, 4)));
 
 #define panic($fmt, ...) $_nil_panic(__FUNCTION__, __FILE_NAME__ ":" NIL_STRINGIFY(__LINE__), $fmt, ## __VA_ARGS__)
 

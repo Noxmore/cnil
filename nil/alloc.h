@@ -1,4 +1,4 @@
-// WIP custom allocator API
+// WIP custom allocator API. Not ready for use.
 
 #pragma once
 
@@ -14,6 +14,7 @@ typedef struct arena_allocator {
 
 arena_allocator create_arena();
 void* arena_alloc(arena_allocator* arena, usize align, usize size);
+usize arena_allocated_bytes(const arena_allocator* arena);
 void arena_reset(arena_allocator* arena);
 void arena_destroy(arena_allocator arena);
 

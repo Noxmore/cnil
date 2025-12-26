@@ -7,6 +7,7 @@
 #include <string.h>
 
 #include "nil/ansi_colors.h"
+#include "nil/format.h"
 #include "nil/panic.h"
 #include "nil/string.h"
 
@@ -30,6 +31,19 @@ static enum type_info_kind cursor_kind_to_type_info_kind(const enum CXCursorKind
 		case CXCursor_EnumDecl: return type_info_enum;
 		default: return type_info_opaque; // Shouldn't happen.
 	}
+}
+
+static const char* get_type_prefix(const enum type_info_kind kind) {
+	switch (kind) {
+		case type_info_struct: return "struct";
+		case type_info_enum: return "enum";
+		case type_info_union: return "union";
+		default: UNREACHABLE;
+	}
+}
+
+static string format_namespaced_type_referral(const type_info_builder* builder) {
+	return string_format("%s %s", get_type_prefix(builder->kind), builder->name.data);
 }
 
 /*static bool parse_ctx_contains_type(const reflect_ctx* ctx, CXCursor cursor) {
@@ -80,6 +94,10 @@ static bool should_ignore_field(CXCursor cursor) {
 	return ignore;
 }
 
+static bool is_anonymous(CXCursor cursor) {
+	return clang_Cursor_isAnonymous(clang_getTypeDeclaration(clang_getCursorType(cursor)));
+}
+
 static enum CXChildVisitResult reflect_type(CXCursor cursor, CXCursor parent, CXClientData client_data) {
 	type_info_builder* type = client_data;
 
@@ -127,15 +145,18 @@ static enum CXChildVisitResult reflect_type(CXCursor cursor, CXCursor parent, CX
 			return CXChildVisit_Continue;
 		}
 
-		// I don't fully know what these functions do.
-		if (clang_Cursor_isAnonymousRecordDecl(cursor) || clang_Cursor_isAnonymous(cursor)) {
+		if (is_anonymous(cursor)) {
 			type_info_builder* sub_type = malloc(sizeof(type_info_builder));
 			memset(sub_type, 0, sizeof(type_info_builder));
 
 			const CXCursor field_type_cursor = clang_getTypeDeclaration(field_type);
 
 			sub_type->kind = clang_getCursorKind(field_type_cursor) == CXCursor_EnumDecl ? type_info_enum : type_info_struct;
-			clang_visitChildren(cursor, reflect_type, sub_type);
+			// printf("%i\n", snprintf(nullptr, 0, "%s::%s", type->name.data, field.name.data));
+			sub_type->name = string_format("%s::%s", type->name.data, field.name.data); // struct_name::field
+			sub_type->type_referral = string_format("typeof((%s){0}.%s)", type->type_referral.data, field.name.data); // sizeof((struct S){0}.field)
+			sub_type->anonymous = true;
+			clang_visitChildren(field_type_cursor, reflect_type, sub_type);
 
 			field.anon_type = sub_type;
 		} else {
@@ -156,14 +177,16 @@ static enum CXChildVisitResult reflect_type(CXCursor cursor, CXCursor parent, CX
 		clang_visitChildren(cursor, push_annotations, &variant.annotations);
 		vec_push(&type->enum_variants, variant);
 	} else if (kind == CXCursor_StructDecl || kind == CXCursor_EnumDecl || kind == CXCursor_UnionDecl) {
-		// I don't fully know what these functions do.
-		if (clang_Cursor_isAnonymousRecordDecl(cursor) || clang_Cursor_isAnonymous(cursor)) {
+		if (is_anonymous(cursor)) {
+			// TODO: inline declarations
+			// clang_visitChildren(cursor, reflect_type, type);
 			return CXChildVisit_Continue;
 		}
 
 		type_info_builder sub_type = {0};
 		sub_type.kind = kind == CXCursor_EnumDecl ? type_info_enum : type_info_struct;
 		sub_type.name = cursor_display_name(cursor);
+		sub_type.type_referral = format_namespaced_type_referral(&sub_type);
 
 		clang_visitChildren(cursor, reflect_type, &sub_type);
 
@@ -255,7 +278,18 @@ static enum CXChildVisitResult search_for_reflected_types(CXCursor cursor, CXCur
 				builder.name = convert_str(clang_getTypeSpelling(clang_getTypedefDeclUnderlyingType(cursor)));
 
 			const CXString typedef_spelling = clang_getTypeSpelling(clang_getTypedefDeclUnderlyingType(cursor));
-			builder.no_namespace = strcmp(clang_getCString(typedef_spelling), builder.name.data) == 0;
+			if (strcmp(clang_getCString(typedef_spelling), builder.name.data) == 0) {
+				builder.type_referral = string_clone(builder.name);
+			} else {
+				// const str prefix = get_type_prefix(builder.kind);
+				/*const usize buf_size = prefix.len + builder.name.len + 1; // Account for null terminator. Space is built into the prefix.
+				char buf[buf_size];
+
+				memcpy(buf, prefix.data, prefix.len);
+				memcpy(buf + prefix.len, builder.name.data, builder.name.len+1); // +1 to copy null terminator.*/
+
+				builder.type_referral = format_namespaced_type_referral(&builder);
+			}
 			clang_disposeString(typedef_spelling);
 
 			clang_visitChildren(type_cursor, reflect_type, &builder);
@@ -289,10 +323,12 @@ void parse_file(const char* file_path, reflect_ctx* ctx, const char* const* comm
 	// HACK: This should be set automatically, but on some systems it doesn't!
 	char resource_dir[4096];
 	get_clang_resource_dir(resource_dir, sizeof(resource_dir));
-	const char** command_line_args_hack = malloc(sizeof(const char*) * (command_line_arg_count + 2));
+	constexpr int extra_arguments = 3;
+	const char** command_line_args_hack = malloc(sizeof(const char*) * (command_line_arg_count + extra_arguments));
 	memcpy(command_line_args_hack, command_line_args, sizeof(const char*) * command_line_arg_count);
 	command_line_args_hack[command_line_arg_count] = "-resource-dir";
 	command_line_args_hack[command_line_arg_count + 1] = resource_dir;
+	command_line_args_hack[command_line_arg_count + 2] = "--define-macro=NIL_INCLUDE_ANNOTATIONS";
 	/*for (usize i = 0; i < command_line_arg_count; i++) {
 		command_line_args_hack[i] = command_line_args[i];
 	}*/
@@ -301,7 +337,7 @@ void parse_file(const char* file_path, reflect_ctx* ctx, const char* const* comm
 	CXTranslationUnit unit;
 	const enum CXErrorCode parse_error = clang_parseTranslationUnit2(
 		index,
-		file_path, command_line_args_hack, command_line_arg_count+2,
+		file_path, command_line_args_hack, command_line_arg_count+extra_arguments,
 		// file_path, command_line_args, command_line_arg_count,
 		nullptr, 0,
 		// CXTranslationUnit_SkipFunctionBodies | CXTranslationUnit_IgnoreNonErrorsFromIncludedFiles | CXTranslationUnit_Incomplete,

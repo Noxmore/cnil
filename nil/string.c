@@ -6,6 +6,7 @@
 #include <memory.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdarg.h>
 #include <sys/stat.h>
 
 
@@ -34,6 +35,41 @@ void string_free(string* str) {
 	if (str->data)
 		free(str->data);
 	*str = EMPTY_STRING;
+}
+
+string string_format(const char* fmt, ...) {
+	va_list args;
+	va_start(args, fmt);
+	const int len = vsnprintf(nullptr, 0, fmt, args);
+	va_end(args);
+
+	if (len < 0)
+		return EMPTY_STRING;
+
+	const usize cap = len + 1;
+	char* buf = malloc(cap);
+
+	va_start(args, fmt);
+	vsnprintf(buf, cap, fmt, args);
+	va_end(args);
+
+	return (string){
+		.data = buf,
+		.len = len,
+		.cap = cap,
+	};
+}
+
+string string_clone(const string s) {
+	const usize cap = s.len+1; // +1 to account for null terminator.
+	void* data = malloc(cap);
+	memcpy(data, s.data, cap);
+
+	return (string){
+		.data = data,
+		.len = s.len,
+		.cap = cap,
+	};
 }
 
 str string_as_slice(const string* s) {

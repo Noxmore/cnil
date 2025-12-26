@@ -4,11 +4,8 @@
 #define NIL_STRINGIFY(...) NIL_STRINGIFY_INNER(__VA_ARGS__)
 
 #define NIL_UNWRAP_PARENS($macro, $args) $macro $args
-// #define NIL_REMOVE_COMMAS(...) NIL_CONCAT_2(NIL_REMOVE_COMMAS_, NIL_COUNT_ARGS(__VA_ARGS__))(__VA_ARGS__)
 
 #define NIL_IDENTITY(...) __VA_ARGS__
-
-// #define EVAL(x) x
 
 #define NIL_CONCAT_2_INNER(a, b) a##b
 #define NIL_CONCAT_2(a, b) NIL_CONCAT_2_INNER(a, b)
@@ -16,8 +13,6 @@
 #define NIL_GENERATED_COUNTER_NAME(NAME) NIL_GENERATED_COUNTER_NAME_INNER_A(NAME, __COUNTER__)
 #define NIL_GENERATED_COUNTER_NAME_INNER_A(NAME, COUNTER) NIL_GENERATED_COUNTER_NAME_INNER_B(NAME, COUNTER)
 #define NIL_GENERATED_COUNTER_NAME_INNER_B(NAME, COUNTER) generated__##NAME##COUNTER##__
-
-// #define NIL_EVAL(v) v
 
 #define NIL_WRAP_VA_ARGS($wrapper, ...) NIL_WRAP_VA_ARGS_1($wrapper, __VA_ARGS__)
 #define NIL_WRAP_VA_ARGS_1($wrapper, $x, ...) $wrapper($x), __VA_OPT__(NIL_WRAP_VA_ARGS_2($wrapper, __VA_ARGS__))
@@ -133,25 +128,6 @@
 #define NIL_REPEAT_30(FN) NIL_REPEAT_29(FN) FN(29)
 #define NIL_REPEAT_31(FN) NIL_REPEAT_30(FN) FN(30)
 
-/*#define FOO_(T) T
-#define FOO_(T) T
-// #define FOO_const NIL_CONCAT_2(const_, NIL_IDENTITY(
-#define FOO_const NIL_CONCAT_2(const_,
-// #define FOO_NAMED(T)
-// #define FOO_const const_
-#define NIL_TYPE_TO_IDENT(T) FOO_##T)*/
-
-
-/*#define NIL_DECOMPOSED_TYPE_1(T) T
-#define NIL_DECOMPOSED_TYPE_2(T, $ptr) T*
-#define NIL_DECOMPOSED_TYPE_3(T, $ptr) T*
-#define NIL_DECOMPOSED_TYPE(...)*/
-
-/*inline void macro_testing() {
-	NIL_REMOVE_COMMAS(const, char, *) bap = "bap!";
-	// const char* const_char_ptr = "bap!";
-}*/
-
 #define NIL_MACRO_VAR($name) NIL_CONCAT_2($name, __LINE__)
 
 #define SCOPED(START, END) \
@@ -159,4 +135,3 @@
 
 #define DEFER(END) \
 	for (bool NIL_MACRO_VAR(i_) = false; !NIL_MACRO_VAR(i_); (NIL_MACRO_VAR(i_) = true), END)
-

@@ -5,6 +5,7 @@
 #include <stdlib.h>
 
 void nil_register_default_types(type_registry* reg) {
+	type_register(reg, TYPE_INFO(void));
 	type_register(reg, TYPE_INFO(u8));
 	type_register(reg, TYPE_INFO(u16));
 	type_register(reg, TYPE_INFO(u32));

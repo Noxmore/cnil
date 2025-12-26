@@ -63,6 +63,15 @@ void* arena_alloc(arena_allocator* arena, const usize align, const usize size) {
 	return arena_alloc_recursive(arena->first_block, align, size);
 }
 
+static usize arena_allocated_bytes_recursive(const arena_block* block) {
+	if (block == nullptr)
+		return 0;
+	return (block->head - block->buffer) + arena_allocated_bytes_recursive(block->next);
+}
+usize arena_allocated_bytes(const arena_allocator* arena) {
+	return arena_allocated_bytes_recursive(arena->first_block);
+}
+
 static void arena_reset_recursive(arena_block* block) {
 	if (block == nullptr)
 		return;
@@ -166,7 +175,7 @@ typedef struct nil_lifetime_inner {
 static_assert(sizeof(nil_lifetime) == sizeof(nil_lifetime_inner));
 static_assert(alignof(nil_lifetime) == alignof(nil_lifetime_inner));
 
-/*typedef struct nil_lifetime {
+*//*typedef struct nil_lifetime {
 	lifetime_ptr_map map;
 } nil_lifetime;#1#
 
