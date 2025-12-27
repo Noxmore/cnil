@@ -16,35 +16,62 @@ static void indent(FILE* file, const u32 depth) {
 }
 
 static void non_write_reflected_recursive(FILE* file, const type_info* type, const void* data, const u32 depth) {
-	if (type->kind == type_info_struct) {
-		fputs("{\n", file);
+	const auto list = trait_get(list_trait, type);
+	if (list && list->const_iter) {
+		fputs("[\n", file);
+		dynamic_iterator iter = list->const_iter(list, data);
+		void* element;
 
-		for (usize i = 0; i < type->struct_data.field_count; i++) {
-			const type_info_field* field = &type->struct_data.fields[i];
-			indent(file, depth+1);
-			fputs(field->name.data, file);
-			fputc(' ', file);
-			non_write_reflected_recursive(file, field->field_type, data + field->struct_offset, depth + 1);
+		while (iter.next(&iter, &element)) {
+			indent(file, depth + 1);
+			non_write_reflected_recursive(file, list->element_type, element, depth + 1);
 			fputc('\n', file);
 		}
 
-		indent(file, depth); fputs("}\n", file);
+		iter.free(&iter);
+
+		indent(file, depth);
+		fputc(']', file);
+		return;
+	}
+
+	if (type->kind == type_info_struct) {
+		u32 inner_depth = depth;
+		// The root struct is implied.
+		if (depth != 0) {
+			fputs("{\n", file);
+			inner_depth++;
+		}
+
+		for (usize i = 0; i < type->struct_data.field_count; i++) {
+			const type_info_field* field = &type->struct_data.fields[i];
+			indent(file, inner_depth);
+			fputs(field->name.data, file);
+			fputc(' ', file);
+			non_write_reflected_recursive(file, field->field_type, data + field->struct_offset, inner_depth);
+			fputc('\n', file);
+		}
+
+		if (depth != 0) {
+			indent(file, depth);
+			fputs("}\n", file);
+		}
 	} else if (type->kind == type_info_enum) {
 		const s64 value = nil_bytes_to_integer(data, type->size);
 		fputs(reflect_enum_name_from_variant_value(type, value).data, file);
 	} else if (type->kind == type_info_union) {
-		panic("Unimplemented. I need to add tagged union support!");
+		panic("TODO: Unimplemented. I need to add tagged union support!");
 	} else if (type->kind == type_info_opaque) {
 		const auto conversions = trait_get(primitive_conversion_trait, type);
-		if (conversions == nullptr || conversions->to_string == nullptr)
-			panic("Opaque type \"%s\" doesn't have the `to_string` primitive conversion registered!", type->name.data);
+		if (conversions == nullptr || conversions->write_string == nullptr)
+			panic("Opaque type \"%s\" doesn't have the `write_string` primitive conversion registered!", type->name.data);
 
 		if (type->opaque_data.kind == type_info_opaque_string) {
 			fputc('"', file);
-			conversions->to_string(data, file);
+			conversions->write_string(data, file);
 			fputc('"', file);
 		} else {
-			conversions->to_string(data, file);
+			conversions->write_string(data, file);
 		}
 	}
 }
@@ -364,6 +391,8 @@ static const char* error_code_string(const enum non_error error) {
 		case non_invalid_enum_data: return "Invalid enum data";
 		case non_invalid_number: return "Invalid number";
 		case non_unable_to_read_opaque: return "Unable to read opaque type";
+		case non_target_type_not_list: return "Tried to read a list but the type being read into isn't a list";
+		case non_target_type_not_defaulted: return "Tried to read a type that requires creating a default value, but the trait was not implemented";
 	}
 	UNREACHABLE;
 }
@@ -607,7 +636,7 @@ void non_free(const non_tree tree) {
 }*/
 
 static non_result non_read_into_reflected_recursive(const non_tree* tree, const non_node* node, const type_info* type, void* data) {
-	// Try direct conversion first.
+	// Try direct conversions first.
 	const auto conversions = trait_get(primitive_conversion_trait, type);
 	if (conversions) switch (node->kind) {
 		case non_string:
@@ -623,6 +652,26 @@ static non_result non_read_into_reflected_recursive(const non_tree* tree, const 
 				return non_ok;
 			break;
 		default:
+	}
+
+	// If that doesn't work, let's see if it's a list we can create.
+	if (node->kind == non_list) {
+		const auto list = trait_get(list_trait, type);
+		const auto defaulter = trait_get(default_trait, type);
+		if (list == nullptr)
+			return non_error(non_target_type_not_list, node->loc);
+		if (defaulter == nullptr)
+			return non_error(non_target_type_not_defaulted, node->loc);
+
+		defaulter->set_default(data);
+		list->reserve(list, data, node->child_count);
+
+		for (u32 child_idx = node->first_child; child_idx != NON_VACANT; child_idx = tree->nodes[child_idx].next_sibling) {
+			const non_node* child = &tree->nodes[child_idx];
+
+			void* element_data = list->push_new(list, data);
+			non_read_into_reflected_recursive(tree, child, list->element_type, element_data);
+		}
 	}
 
 	for (u32 child_idx = node->first_child; child_idx != NON_VACANT; child_idx = tree->nodes[child_idx].next_sibling) {
@@ -687,7 +736,7 @@ non_result non_read_into_reflected(FILE* file, const type_info* type, void* data
 		non_print_error(stderr, parse_res, string_as_slice(&s));
 		return parse_res;
 	}
-	non_tree_debug(&tree);
+	// non_tree_debug(&tree);
 
 	const non_result read_res = non_read_into_reflected_recursive(&tree, &tree.nodes[0], type, data);
 	if (!read_res.ok) {

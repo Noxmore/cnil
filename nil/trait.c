@@ -26,6 +26,9 @@ typedef struct trait_registry_inner {
 static_assert(sizeof(trait_registry_inner) == sizeof(trait_registry));
 static_assert(alignof(trait_registry_inner) == alignof(trait_registry));
 
+// Probably doesn't need to be atomic, but why not.
+static _Atomic usize total_implementations = 0;
+
 static void lock_registry(trait_registry_inner* self) {
 	if (self->locked)
 		panic("Trait registry locked! Are you multithreading? It isn't supported yet!");
@@ -48,8 +51,7 @@ void trait_registry_free(trait_registry* registry) {
 	trait_registry_inner* self = (trait_registry_inner*) registry;
 	lock_registry(self);
 	auto iter = trait_cache_iter(&self->cache);
-	trait_cache_Entry* entry;
-	while ((entry = trait_cache_Iter_next(&iter))) {
+	for (trait_cache_Entry* entry = trait_cache_Iter_get(&iter); entry != nullptr; entry = trait_cache_Iter_next(&iter)) {
 		if (self->free)
 			self->free(entry->val.data);
 
@@ -82,6 +84,7 @@ void trait_registry_impl_owned(trait_registry* registry, const type_info* type, 
 			.data = data,
 		},
 	});
+	total_implementations++;
 	unlock_registry(self);
 }
 
@@ -95,6 +98,7 @@ void trait_registry_impl_static(trait_registry* registry, const type_info* type,
 			.data = trait_data,
 		},
 	});
+	total_implementations++;
 	unlock_registry(self);
 }
 
@@ -126,6 +130,7 @@ const void* trait_registry_get(trait_registry* registry, const type_info* type) 
 					.data = data,
 				},
 			});
+			total_implementations++;
 			self->locked = false;
 			return data;
 		}
@@ -145,8 +150,14 @@ const void* trait_registry_get(trait_registry* registry, const type_info* type) 
 	return nullptr;
 }
 
+usize total_implemented_traits() {
+	return total_implementations;
+}
+
 
 // -- COMMON TRAITS -- //
 
 DEFINE_TRAIT(destructor_trait, nullptr)
+DEFINE_TRAIT(default_trait, nullptr)
 DEFINE_TRAIT(primitive_conversion_trait, nullptr)
+DEFINE_TRAIT(list_trait, nullptr)

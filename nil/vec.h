@@ -41,7 +41,7 @@
 // #define vec_foreach($arr, $name) for (usize NIL_MACRO_VAR(i) = 0; NIL_MACRO_VAR(i) < ($arr)->len; NIL_MACRO_VAR(i)++)
 // #define vec_for($arr, $i) for (usize $i = 0; $i < ($arr)->len; $i++)
 
-/// Type-erased vector. Mainly used internally, but can also bee used for runtime-defined/runtime-sized types.
+// Type-erased vector. Mainly used internally, but can also be used for runtime-defined/runtime-sized types.
 typedef struct erased_vec {
 	void* data;
 	usize len;

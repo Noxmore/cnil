@@ -71,9 +71,9 @@ void type_info_debug_print(const type_info* type, FILE* file) {
 
 	fprintf(file, "}\n");
 }
-bool type_info_contains_annotation(const type_info* type, const char* annotation) {
+bool type_info_contains_annotation(const type_info* type, const str annotation) {
 	for (usize i = 0; i < type->annotation_count; i++) {
-		if (strcmp(type->annotations[i], annotation) == 0)
+		if (str_eq(type->annotations[i], annotation))
 			return true;
 	}
 
@@ -175,18 +175,28 @@ static void indent(const u32 depth) {
 		printf("  ");
 }
 
-/*s64 nil_get_any_sized_int(const void* data, const u8 type_size) {
-	s64 value = 0;
-	memcpy(&value, data, type_size);
-	// Move the transferred bits to the right of the number.
-	// UPDATE: Apparently it is already aligned correctly?
-	// value >>= (s64)(sizeof(s64) - type_size);
-	return value;
-}*/
-
 static void debug_reflected_recursive(const void* obj, const type_info* type, const u32 depth) {
 	if (type == nullptr) {
-		printf(COLOR_ERROR "<null codec>");
+		printf(COLOR_ERROR "<null type>");
+		return;
+	}
+
+	const auto list = trait_get(list_trait, type);
+	if (list && list->const_iter) {
+		printf("{\n");
+		dynamic_iterator iter = list->const_iter(list, obj);
+		void* element;
+
+		while (iter.next(&iter, &element)) {
+			indent(depth + 1);
+			debug_reflected_recursive(element, list->element_type, depth + 1);
+			puts(ANSI_RESET ",");
+		}
+
+		iter.free(&iter);
+
+		indent(depth);
+		putchar('}');
 		return;
 	}
 
@@ -233,8 +243,8 @@ static void debug_reflected_recursive(const void* obj, const type_info* type, co
 				fputs(COLOR_STRING "\"", stdout);
 
 			const primitive_conversion_trait* conversions = trait_get(primitive_conversion_trait, type);
-			if (conversions && conversions->to_string)
-				conversions->to_string(obj, stdout);
+			if (conversions && conversions->write_string)
+				conversions->write_string(obj, stdout);
 			else
 				fputs("<No Writer>", stdout);
 
@@ -257,8 +267,11 @@ DEFINE_TYPEDEF_INFO(void,
 )
 
 #define REFLECT_INTEGER(T, FMT, KIND)                                          \
-	static void T##_to_string(const void* self, FILE* file) {                   \
+	static void T##_write_string(const void* self, FILE* file) {                \
 		fprintf(file, FMT, *(T*)self);                                           \
+	}                                                                           \
+	static string T##_to_string(const void* self) {                             \
+		return string_format(FMT, *(T*)self);                                    \
 	}                                                                           \
 	static double T##_to_floating(const void* self) {                           \
 		return (double)*(T*)self;                                                \
@@ -288,6 +301,7 @@ DEFINE_TYPEDEF_INFO(void,
 		.opaque_data.kind = KIND,                                                \
 	)                                                                           \
 	IMPL_TRAIT(primitive_conversion_trait, T, {                                 \
+		.write_string = T##_write_string,                                              \
 		.to_string = T##_to_string,                                              \
 		.to_floating = T##_to_floating,                                          \
 		.to_integer = T##_to_integer,                                            \
@@ -320,8 +334,11 @@ REFLECT_INTEGER(short, "%i", type_info_opaque_sint)
 REFLECT_INTEGER(int, "%i", type_info_opaque_sint)
 REFLECT_INTEGER(long, "%li", type_info_opaque_sint)
 
-static void float_to_string(const void* self, FILE* file) {
+static void float_write_string(const void* self, FILE* file) {
 	fprintf(file, "%f", *(float*)self);
+}
+static string float_to_string(const void* self) {
+	return string_format("%f", *(float*)self);
 }
 static double float_to_floating(const void* self) {
 	return (double)*(float*)self;
@@ -352,6 +369,7 @@ DEFINE_TYPEDEF_INFO(float,
 	.opaque_data.kind = type_info_opaque_real,
 )
 IMPL_TRAIT(primitive_conversion_trait, float, {
+	.write_string = float_write_string,
 	.to_string = float_to_string,
 	.to_floating = float_to_floating,
 	.to_integer = float_to_integer,
@@ -360,8 +378,11 @@ IMPL_TRAIT(primitive_conversion_trait, float, {
 	.from_integer = float_from_integer,
 })
 
-static void double_to_string(const void* self, FILE* file) {
+static void double_write_string(const void* self, FILE* file) {
 	fprintf(file, "%f", *(double*)self);
+}
+static string double_to_string(const void* self) {
+	return string_format("%f", *(double*)self);
 }
 static double double_to_floating(const void* self) {
 	return *(double*)self;
@@ -392,6 +413,7 @@ DEFINE_TYPEDEF_INFO(double,
 	.opaque_data.kind = type_info_opaque_real,
 )
 IMPL_TRAIT(primitive_conversion_trait, double, {
+	.write_string = double_write_string,
 	.to_string = double_to_string,
 	.to_floating = double_to_floating,
 	.to_integer = double_to_integer,
@@ -405,8 +427,11 @@ static bool string_from_string(void* self, str s) {
 	*(string*)self = str_allocate(s);
 	return true;
 }
-static void string_to_string(const void* self, FILE* file) {
+static void string_write_string(const void* self, FILE* file) {
 	fputs(((string*)self)->data, file);
+}
+static string string_to_string(const void* self) {
+	return string_clone(*(string*)self);
 }
 DEFINE_TYPEDEF_INFO(string,
 	.kind = type_info_opaque,
@@ -414,23 +439,28 @@ DEFINE_TYPEDEF_INFO(string,
 )
 IMPL_FREE(string, string_free)
 IMPL_TRAIT(primitive_conversion_trait, string, {
+	.write_string = string_write_string,
 	.to_string = string_to_string,
 	.from_string = string_from_string,
 })
 
+static void str_write_string(const void* self, FILE* file) {
+	fputs(((str*)self)->data, file);
+}
+static string str_to_string(const void* self) {
+	return str_allocate(*(str*)self);
+}
 static bool str_from_string(void* self, str s) {
 	// TODO: This doesn't take ownership, should this function be nullptr?
 	*(str*)self = s;
 	return true;
-}
-static void str_to_string(const void* self, FILE* file) {
-	fputs(((str*)self)->data, file);
 }
 DEFINE_TYPEDEF_INFO(str,
 	.kind = type_info_opaque,
 	.opaque_data.kind = type_info_opaque_string,
 )
 IMPL_TRAIT(primitive_conversion_trait, str, {
+	.write_string = str_write_string,
 	.to_string = str_to_string,
 	.from_string = str_from_string,
 })

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "nint.h"
+#include "macro_utils.h"
 
 #include <bits/types/FILE.h>
 
@@ -27,10 +28,17 @@ typedef struct str {
 constexpr str EMPTY_STR = { 0 };
 
 // Creates a static `str` slice from a string literal.
-#define s(LITERAL) (str){ .data = LITERAL, .len = sizeof(LITERAL)-1 }
+#define s(LITERAL) ((str){ .data = LITERAL, .len = sizeof(LITERAL)-1 })
 
 // Creates a string via a null terminated C string.
 string string_new(const char* str);
+// Creates a string with a specific length to be written into. Allocates +1 to account for null terminator.
+// The last byte of the allocation will be '\0', the rest is undefined, and should be overwritten.
+string string_sized(usize len);
+// Create a string by concatenating a bunch of `str`s together.
+string string_concat_array(usize str_count, const str strs[static str_count]);
+// Create a string by concatenating a bunch of `str`s together. Call like a variadic function.
+#define string_concat(...) string_concat_array(NIL_COUNT_ARGS(__VA_ARGS__), (str[]){ __VA_ARGS__ })
 void string_free(string* str);
 /// Creates a new string with regular C formatting codes.
 string string_format(const char* fmt, ...) __attribute__((format(printf, 1, 2)));

@@ -14,9 +14,9 @@ u64 nil_hash_with_seed(usize seed, const void* data, usize len);
 
 u64 nil_internal_hash_all(usize pairs, ...);
 // Call in pairs of `const void*, usize`, where each pair defines the start and length of an object to be hashed.
-#define nil_hash_all(...) ((void)sizeof(struct { static_assert(NIL_COUNT_ARGS(__VA_ARGS__) % 2 == 0); }), nil_internal_hash_all(NIL_COUNT_ARGS(__VA_ARGS__)/2, __VA_ARGS__))
+#define nil_hash_all(...) ((void)sizeof(struct { static_assert(NIL_COUNT_ARGS(__VA_ARGS__) % 2 == 0, "args must be in pairs of ptr, len!"); }), nil_internal_hash_all(NIL_COUNT_ARGS(__VA_ARGS__)/2, __VA_ARGS__))
 
 u64 nil_internal_hash_all_with_seed(usize seed, usize pairs, ...);
 // Call variadic args in pairs of `const void*, usize`, where each pair defines the start and length of an object to be hashed.
-#define nil_hash_all_with_seed(SEED, ...) ((void)sizeof(struct { static_assert(NIL_COUNT_ARGS(__VA_ARGS__) % 2 == 0); }), nil_internal_hash_all_with_seed(SEED, NIL_COUNT_ARGS(__VA_ARGS__)/2, __VA_ARGS__))
+#define nil_hash_all_with_seed(SEED, ...) ((void)sizeof(struct { static_assert(NIL_COUNT_ARGS(__VA_ARGS__) % 2 == 0, "args must be in pairs of ptr, len!"); }), nil_internal_hash_all_with_seed(SEED, NIL_COUNT_ARGS(__VA_ARGS__)/2, __VA_ARGS__))
 

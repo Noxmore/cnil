@@ -1,7 +1,11 @@
 #include "vec.h"
 
+#include "trait.h"
+
 #include <stdlib.h>
 #include <string.h>
+
+#include "panic.h"
 
 void internal_vec_free(erased_vec* arr) {
 	if (arr->data != nullptr) free(arr->data);
@@ -108,11 +112,118 @@ void* internal_slotted_vec_reserve_slot(erased_vec* arr, const usize slotSize, c
 	return slot;
 }
 
-/*
-usize internal_slottedDynArrayAdd(erased_dyn_array* arr, usize slotSize, const void* item) {
-	usize index = internal_slottedDynArrayReserveSlot(arr, slotSize);
 
-	memcpy(arr->data + index * slotSize + sizeof(bool), item, slotSize - sizeof(usize) - sizeof(bool));
+// -- TRAIT IMPLS -- //
 
-	return index;
+static bool is_type_vec(const type_info* type) {
+	if (!type_info_contains_annotation(type, s(NIL_VEC_MARKER)))
+		return false;
+
+#ifndef NDEBUG
+	if (
+		type->size != sizeof(erased_vec) ||
+		type->align != alignof(erased_vec) ||
+		type->kind != type_info_struct ||
+		type->struct_data.field_count != 3 ||
+		!str_eq(type->struct_data.fields[0].name, s("data")) ||
+		!type->struct_data.fields[0].is_pointer ||
+		!str_eq(type->struct_data.fields[1].name, s("len")) ||
+		type->struct_data.fields[1].field_type != TYPE_INFO(usize) ||
+		!str_eq(type->struct_data.fields[2].name, s("cap")) ||
+		type->struct_data.fields[2].field_type != TYPE_INFO(usize)
+	) {
+		panic("Invalid type marked as vector: %s", type->name.data);
+	}
+#endif
+
+	return true;
+}
+
+static void zero_out_vec(void* self) {
+	memset(self, 0, sizeof(erased_vec));
+}
+
+static bool recognize_default_for_vecs(const type_info* type, void* data) {
+	default_trait* trait = data;
+
+	if (!is_type_vec(type))
+		return false;
+
+	trait->set_default = zero_out_vec;
+	return true;
+}
+IMPL_TRAIT_RECOGNIZER(default_trait, recognize_default_for_vecs)
+
+
+
+static usize list_vec_len(const list_trait* trait, const void* self) {
+	return ((erased_vec*)self)->len;
+
+}
+static void list_vec_reserve(const list_trait* trait, void* self, const usize elements) {
+	internal_vec_reallocate(self, trait->element_type->size, ((erased_vec*)self)->cap + elements);
+}
+static void* list_vec_push_new(const list_trait* trait, void* self) {
+	return internal_vec_reserve_item(self, trait->element_type->size);
+}
+/*static void list_vec_insert(const list_trait* trait, void* self, const usize index, const void* element) {
+
 }*/
+static void list_vec_remove(const list_trait* trait, void* self, const usize index) {
+	internal_vec_remove(self, trait->element_type->size, index);
+}
+
+static bool list_vec_iter_next(dynamic_iterator* iter, void** dst) {
+	const erased_vec* vec = iter->data;
+
+	if (iter->stack_data[0] >= vec->len)
+		return false;
+
+	*dst = vec->data + iter->stack_data[0] * iter->stack_data[1];
+	iter->stack_data[0]++;
+	return true;
+}
+static dynamic_iterator list_vec_iter(const list_trait* trait, void* self) {
+	static_assert(sizeof(usize) <= sizeof(void*));
+	return (dynamic_iterator){
+		.data = self,
+		.stack_data = {0, trait->element_type->size},
+
+		.next = list_vec_iter_next,
+		.free = nullptr,
+	};
+}
+static void list_vec_iter_free(dynamic_iterator* iter) {}
+static dynamic_iterator list_vec_const_iter(const list_trait* trait, const void* self) {
+	static_assert(sizeof(usize) <= sizeof(void*));
+	return (dynamic_iterator){
+		.data = (void*)self,
+		.stack_data = {0, trait->element_type->size},
+
+		.next = list_vec_iter_next,
+		.free = list_vec_iter_free,
+	};
+}
+
+static bool recognize_list_for_vecs(const type_info* type, void* data) {
+	list_trait* trait = data;
+
+	if (!is_type_vec(type))
+		return false;
+
+	*trait = (list_trait){
+		.element_type = type->struct_data.fields[0].field_type,
+
+		.len = list_vec_len,
+
+		.reserve = list_vec_reserve,
+		.push_new = list_vec_push_new,
+		// .insert = list_vec_insert,
+		.remove = list_vec_remove,
+
+		.iter = list_vec_iter,
+		.const_iter = list_vec_const_iter,
+	};
+	return true;
+}
+IMPL_TRAIT_RECOGNIZER(list_trait, recognize_list_for_vecs)

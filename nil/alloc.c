@@ -103,6 +103,8 @@ void arena_destroy(arena_allocator arena) {
 	vec_free(&arena.big_allocations);
 }
 
+// TODO: If I uncomment this, fix hashset iterators to use a for loop to avoid UB.
+
 /*
 CWISS_DECLARE_FLAT_HASHSET(galloc_ptr_map, void*);
 

@@ -31,6 +31,37 @@ string string_new(const char* str) {
 	};
 }
 
+string string_sized(const usize len) {
+	const usize cap = len + 1; // Account for the null-terminator.
+	char* data = malloc(cap);
+	data[len] = '\0';
+
+	return (string){
+		.data = data,
+		.len = len,
+		.cap = cap,
+	};
+}
+
+string string_concat_array(const usize str_count, const str strs[static str_count]) {
+	usize total_len = 0;
+
+	for (usize i = 0; i < str_count; i++)
+		total_len += strs[i].len;
+
+	string s = string_sized(total_len);
+
+	char* cursor = s.data;
+
+	for (usize i = 0; i < str_count; i++) {
+		const usize len = strs[i].len;
+		memcpy(cursor, strs[i].data, len);
+		cursor += len;
+	}
+
+	return s;
+}
+
 void string_free(string* str) {
 	if (str->data)
 		free(str->data);

@@ -196,7 +196,7 @@
 #define CWISS_CHECK(cond_, ...)                                           \
   do {                                                                    \
     if (cond_) break;                                                     \
-    fprintf(stderr, "CWISS_CHECK failed at %s:%d\n", __FILE__, __LINE__); \
+    fprintf(stderr, "CWISS_CHECK failed at %s:%d\n", __FILE_NAME__, __LINE__); \
     fprintf(stderr, __VA_ARGS__);                                         \
     fprintf(stderr, "\n");                                                \
     fflush(stderr);                                                       \

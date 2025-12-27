@@ -18,9 +18,11 @@ static void write_annotations(FILE* file, const char* prefix, const char* suffix
 		fprintf(file, ".annotations = nullptr,");
 		fputs(suffix, file);
 	} else {
-		fprintf(file, ".annotations = (const char*[]){");
+		fprintf(file, ".annotations = (str[]){");
 		for (usize i = 0; i < annotation_count; i++) {
+			fprintf(file, "s(");
 			fprintf(file, "\"%s\"", annotations[i].data);
+			fputc(')', file);
 			if (i != annotation_count-1)
 				fprintf(file, ", ");
 		}

@@ -1,7 +1,5 @@
 #include "panic.h"
 
-// #include "format.h"
-
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -11,9 +9,6 @@ nil_panic_hook nil_current_panic_hook;
 void $_nil_panic(const char* fn, const char* at, const char* fmt, ...) {
 	fprintf(stderr, "PANICKED AT %s (%s): ", at, fn);
 	va_list args;
-	/*va_start(args, fmt);
-	vfprintf(stderr, fmt, args);
-	va_end(args);*/
 
 	va_start(args, fmt);
 	const int msg_len = vsnprintf(nullptr, 0, fmt, args);
@@ -24,20 +19,14 @@ void $_nil_panic(const char* fn, const char* at, const char* fmt, ...) {
 	if (msg_len < 0) {
 		message = EMPTY_STRING;
 	} else {
-		const usize msg_cap = msg_len + 1;
-		char* msg_buf = malloc(msg_cap);
+		message = string_sized(msg_len);
 
 		va_start(args, fmt);
-		vsnprintf(msg_buf, msg_cap, fmt, args);
+		vsnprintf(message.data, message.cap, fmt, args);
 		va_end(args);
-
-		message = (string){
-			.data = msg_buf,
-			.len = msg_len,
-			.cap = msg_cap,
-		};
 	}
 
+	// TODO: debugger kinda reports message.data being correct?? But it doesn't print it out??
 	fputs(message.data, stdout);
 	fputc('\n', stderr);
 

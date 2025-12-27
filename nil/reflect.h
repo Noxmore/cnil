@@ -17,13 +17,11 @@ typedef void (*nil_free_fn)(void*);
 
 typedef struct type_info type_info;
 
-typedef const char* const* type_info_annotations;
-
 typedef struct type_info_field {
 	// Name of the field. Null terminated.
 	str name;
 
-	type_info_annotations annotations;
+	const str* annotations;
 	usize annotation_count;
 
 	const type_info* field_type;
@@ -38,7 +36,7 @@ typedef struct type_info_field {
 typedef struct type_info_variant {
 	str name;
 	s64 value;
-	type_info_annotations annotations;
+	const str* annotations;
 	usize annotation_count;
 } type_info_variant;
 
@@ -65,7 +63,7 @@ typedef struct type_info {
 	usize size;
 	usize align;
 
-	type_info_annotations annotations;
+	const str* annotations;
 	usize annotation_count;
 
 	/*// Custom free function. Can be nullptr.
@@ -108,7 +106,7 @@ typedef struct type_info {
 } type_info;
 
 void type_info_debug_print(const type_info* type, FILE* file);
-bool type_info_contains_annotation(const type_info* type, const char* annotation);
+bool type_info_contains_annotation(const type_info* type, str annotation);
 
 // If applicable, calls the reflected free function of `type` on `data`. Otherwise, recursively searches for the free function in fields.
 void free_reflected(const type_info* type, void* data);
@@ -168,7 +166,8 @@ void nil_register_default_types(type_registry* reg);
 #ifdef NIL_INCLUDE_ANNOTATIONS
 	#define NIL_REFLECTION_AUTO_REGISTER_MARKER(T) typedef T NIL_GENERATED_COUNTER_NAME(auto_register_marker) ANNOTATE(NIL_ANNOTATION_GENERATE_REFLECTION);
 #else
-	#define NIL_REFLECTION_AUTO_REGISTER_MARKER(T)
+	// This is just to add autocomplete and syntax highlighting to the macro.
+	#define NIL_REFLECTION_AUTO_REGISTER_MARKER(T) static_assert(sizeof(T)|1);
 #endif
 
 // Only use in header files or any file reflected in build options.

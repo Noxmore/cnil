@@ -6,8 +6,6 @@
 constexpr usize TRAIT_REGISTRY_PTR_WORDS = 12;
 
 // Currently doesn't support multithreading. If you try, you will get weird results or crash!
-// struct erased_type_registry { usize private[TRAIT_REGISTRY_PTR_WORDS]; };
-// #define trait_registry(T) struct T##_registry_t { T* private[TRAIT_REGISTRY_PTR_WORDS]; }
 typedef struct trait_registry {
 	usize private[TRAIT_REGISTRY_PTR_WORDS];
 } trait_registry;
@@ -30,32 +28,43 @@ void trait_registry_impl_static(trait_registry* registry, const type_info* type,
 // If the trait is cached, returns it. If not, attempts to run recognizers to implement it, caching the result.
 const void* trait_registry_get(trait_registry* registry, const type_info* type);
 
-#define NIL_REGISTRY_NAME(TRAIT) TRAIT##_registry
-// #define NIL_REGISTRY_REF(TRAIT) ((trait_registry*)&NIL_REGISTRY_NAME(TRAIT))
+// Fun/diagnostic function to get the total amount of times a trait has been implemented.
+usize total_implemented_traits();
 
-#define DECLARE_TRAIT(TRAIT) extern trait_registry NIL_REGISTRY_NAME(TRAIT);
+#define NIL_TRAIT_REGISTRY_NAME(TRAIT) TRAIT##_registry
+
+#define DECLARE_TRAIT(TRAIT) \
+	static_assert(sizeof(TRAIT)|1); \
+	extern trait_registry NIL_TRAIT_REGISTRY_NAME(TRAIT);
 
 #define NIL_TRAIT_INIT_CONSTRUCTOR_PRIORITY 101
 #define NIL_TRAIT_IMPL_CONSTRUCTOR_PRIORITY 102
 
 // Implementation. Do not use in header files.
 #define DEFINE_TRAIT(TRAIT, FREE) \
-	trait_registry NIL_REGISTRY_NAME(TRAIT); \
-	__attribute__((constructor(NIL_TRAIT_INIT_CONSTRUCTOR_PRIORITY))) static void NIL_CONCAT_2(NIL_REGISTRY_NAME(TRAIT), _auto_init)() { \
-		trait_registry_init(&NIL_REGISTRY_NAME(TRAIT), sizeof(TRAIT), alignof(TRAIT), FREE); \
+	trait_registry NIL_TRAIT_REGISTRY_NAME(TRAIT); \
+	__attribute__((constructor(NIL_TRAIT_INIT_CONSTRUCTOR_PRIORITY))) static void NIL_CONCAT_2(NIL_TRAIT_REGISTRY_NAME(TRAIT), _auto_init)() { \
+		trait_registry_init(&NIL_TRAIT_REGISTRY_NAME(TRAIT), sizeof(TRAIT), alignof(TRAIT), FREE); \
 	} \
-	__attribute__((destructor(NIL_TRAIT_INIT_CONSTRUCTOR_PRIORITY))) static void NIL_CONCAT_2(NIL_REGISTRY_NAME(TRAIT), _auto_free)() { \
-		trait_registry_free(&NIL_REGISTRY_NAME(TRAIT)); \
+	__attribute__((destructor(NIL_TRAIT_INIT_CONSTRUCTOR_PRIORITY))) static void NIL_CONCAT_2(NIL_TRAIT_REGISTRY_NAME(TRAIT), _auto_free)() { \
+		trait_registry_free(&NIL_TRAIT_REGISTRY_NAME(TRAIT)); \
 	}
 
 // Implementation. Do not use in header files.
 #define IMPL_TRAIT(TRAIT, T, ...) \
-	static TRAIT NIL_MACRO_VAR(TRAIT##_impl) = __VA_ARGS__; \
-	__attribute__((constructor(NIL_TRAIT_IMPL_CONSTRUCTOR_PRIORITY))) static void NIL_MACRO_VAR(TRAIT##_impl_fn)() { \
-		trait_registry_impl_static(&NIL_REGISTRY_NAME(TRAIT), TYPE_INFO(T), &NIL_MACRO_VAR(TRAIT##_impl)); \
+	static TRAIT TRAIT##_impl_##T##__ = __VA_ARGS__; \
+	__attribute__((constructor(NIL_TRAIT_IMPL_CONSTRUCTOR_PRIORITY))) static void NIL_GENERATED_COUNTER_NAME(TRAIT##_impl)() { \
+		trait_registry_impl_static(&NIL_TRAIT_REGISTRY_NAME(TRAIT), TYPE_INFO(T), &TRAIT##_impl_##T##__); \
 	}
 
-#define trait_get(TRAIT, TYPE_INFO) (const TRAIT*)trait_registry_get(&NIL_REGISTRY_NAME(TRAIT), (TYPE_INFO))
+// Implementation. Do not use in header files.
+#define IMPL_TRAIT_RECOGNIZER(TRAIT, RECOGNIZER) \
+	static_assert(sizeof(TRAIT)|1); \
+	__attribute__((constructor(NIL_TRAIT_IMPL_CONSTRUCTOR_PRIORITY))) static void NIL_GENERATED_COUNTER_NAME(TRAIT##_add_recognizer)() { \
+		trait_registry_impl_recognizer(&NIL_TRAIT_REGISTRY_NAME(TRAIT), RECOGNIZER); \
+	}
+
+#define trait_get(TRAIT, TYPE_INFO) (const TRAIT*)trait_registry_get(&NIL_TRAIT_REGISTRY_NAME(TRAIT), (TYPE_INFO))
 
 
 
@@ -69,16 +78,48 @@ DECLARE_TRAIT(destructor_trait)
 	static void erased_free_fn_##T(void* data) { FN((T*)data); } \
 	IMPL_TRAIT(destructor_trait, T, { .free = erased_free_fn_##T })
 
+typedef struct default_trait {
+	void (*set_default)(void* self);
+} default_trait;
+DECLARE_TRAIT(default_trait)
+#define IMPL_ZEROED_DEFAULT(T) \
+	static void zero_out_default_##T(void* self) { *(T*)self = (T){0}; } \
+	IMPL_TRAIT(default_trait, T, { .set_default = zero_out_default_##T })
+
 // `type_info` conversion functions. Mainly used for opaque/primitive types.
 // Any and all of these can be null, which signals "unimplemented" or "unsupported".
 typedef struct primitive_conversion_trait {
-	// TODO: Improve this function, make it not need to rely on files. Perhaps a stream API could help?
-	void (*to_string)(const void* self, FILE* file);
+	// Write as a string directly to a file to avoid having to allocate via `to_string` if not needed.
+	void (*write_string)(const void* self, FILE* file);
+	string (*to_string)(const void* self);
 	double (*to_floating)(const void* self);
 	s64 (*to_integer)(const void* self);
 	bool (*from_string)(void* self, str s);
 	bool (*from_floating)(void* self, double v);
 	bool (*from_integer)(void* self, s64 v);
 } primitive_conversion_trait;
-
 DECLARE_TRAIT(primitive_conversion_trait)
+
+typedef struct dynamic_iterator {
+	void* data;
+	// Extra data stored on the stack to avoid having to allocate for the iterator in many cases.
+	u64 stack_data[2];
+
+	bool (*next)(struct dynamic_iterator* iter, void** dst);
+	void (*free)(struct dynamic_iterator* iter);
+} dynamic_iterator;
+
+typedef struct list_trait {
+	const type_info* element_type;
+
+	usize (*len)(const struct list_trait* trait, const void* self);
+
+	void (*reserve)(const struct list_trait* trait, void* self, usize elements);
+	void* (*push_new)(const struct list_trait* trait, void* self);
+	// void (*insert)(const struct list_trait* trait, void* self, usize index, const void* element);
+	void (*remove)(const struct list_trait* trait, void* self, usize index);
+
+	dynamic_iterator (*iter)(const struct list_trait* trait, void* self);
+	dynamic_iterator (*const_iter)(const struct list_trait* trait, const void* self);
+} list_trait;
+DECLARE_TRAIT(list_trait)
