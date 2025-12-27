@@ -109,7 +109,7 @@ static enum CXChildVisitResult reflect_type(CXCursor cursor, CXCursor parent, CX
 		if (strcmp(clang_getCString(display_name), NIL_ANNOTATION_GENERATE_REFLECTION) == 0)
 			return CXChildVisit_Continue;
 
-		nil_string_splitter splitter = nil_split_cstr(clang_getCString(display_name), "=");
+		/*nil_string_splitter splitter = nil_split_cstr(clang_getCString(display_name), "=");
 		str split;
 		if (
 			nil_split_next(&splitter, &split) &&
@@ -118,7 +118,7 @@ static enum CXChildVisitResult reflect_type(CXCursor cursor, CXCursor parent, CX
 		) {
 			type->free_fn = str_allocate(split);
 			return CXChildVisit_Continue;
-		}
+		}*/
 
 		clang_disposeString(display_name);
 

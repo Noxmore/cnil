@@ -1,13 +1,19 @@
 #pragma once
 
 #include "nint.h"
-#include "macro_utils.h"
+#ifdef NIL_INCLUDE_ANNOTATIONS
+	#include "macro_utils.h"
+#endif
 #include "string.h"
 
 #include <bits/types/FILE.h>
 
 void nil_integer_to_bytes(s64 value, u8* out, usize n);
 s64 nil_bytes_to_integer(const u8* in, usize n);
+
+// Generic free function/destructor.
+// I can't think of a better place to put this, so it's going into reflect.h!
+typedef void (*nil_free_fn)(void*);
 
 typedef struct type_info type_info;
 
@@ -36,20 +42,6 @@ typedef struct type_info_variant {
 	usize annotation_count;
 } type_info_variant;
 
-typedef void (*nil_free_fn)(void*);
-
-// `type_info` conversion functions. Mainly used for opaque/primitive types.
-// Any and all of these can be null, which signals "unimplemented" or "unsupported".
-typedef struct type_info_conversions {
-	// TODO: Improve this function, make it not need to rely on files. Perhaps a stream API could help?
-	void (*to_string)(const void* self, FILE* file);
-	double (*to_floating)(const void* self);
-	s64 (*to_integer)(const void* self);
-	bool (*from_string)(void* self, str s);
-	bool (*from_floating)(void* self, double v);
-	bool (*from_integer)(void* self, s64 v);
-} type_info_conversions;
-
 typedef enum type_info_generic {
 	type_info_generic_type,
 	type_info_generic_data_types,
@@ -76,14 +68,11 @@ typedef struct type_info {
 	type_info_annotations annotations;
 	usize annotation_count;
 
-	const type_info_generic* generics;
-	usize generic_count;
-
-	// Custom free function. Can be nullptr.
+	/*// Custom free function. Can be nullptr.
 	nil_free_fn free;
 
 	// Conversion functions. Mainly used for opaque/primitive types.
-	type_info_conversions conversions;
+	type_info_conversions conversions;*/
 
 	union {
 		struct {
@@ -162,10 +151,9 @@ void nil_register_default_types(type_registry* reg);
 // Automatic reflection.
 #define NIL_ANNOTATION_GENERATE_REFLECTION "auto_reflect"
 #define NIL_ANNOTATION_REFLECT_IGNORE "reflect_ignore"
-#define NIL_ANNOTATION_REFLECT_FREE_PREFIX "reflect_free"
+// #define NIL_ANNOTATION_REFLECT_FREE_PREFIX "reflect_free"
 #define NIL_ANNOTATION_DOC_PREFIX "doc"
 // #define NIL_ANNOTATION_ARRAY_PREFIX "reflect_array"
-#define NIL_ANNOTATION_SPECIALIZE_PREFIX "reflect_specialize"
 
 #ifdef NIL_INCLUDE_ANNOTATIONS
 	#define ANNOTATE(STRING) __attribute__((annotate(STRING)))
@@ -173,10 +161,9 @@ void nil_register_default_types(type_registry* reg);
 	#define ANNOTATE(STRING)
 #endif
 #define REFLECT_IGNORE ANNOTATE(NIL_ANNOTATION_REFLECT_IGNORE)
-#define REFLECT_FREE(FN) ANNOTATE(NIL_ANNOTATION_REFLECT_FREE_PREFIX "=" #FN)
+// #define REFLECT_FREE(FN) ANNOTATE(NIL_ANNOTATION_REFLECT_FREE_PREFIX "=" #FN)
 #define REFLECT_DOC(DOC) ANNOTATE(NIL_ANNOTATION_DOC_PREFIX "=" DOC)
 // #define REFLECT_ARRAY()
-#define REFLECT_SPECIALIZE(T, ...) ANNOTATE(NIL_ANNOTATION_SPECIALIZE_PREFIX "=" #T "," #__VA_ARGS__)
 
 #ifdef NIL_INCLUDE_ANNOTATIONS
 	#define NIL_REFLECTION_AUTO_REGISTER_MARKER(T) typedef T NIL_GENERATED_COUNTER_NAME(auto_register_marker) ANNOTATE(NIL_ANNOTATION_GENERATE_REFLECTION);

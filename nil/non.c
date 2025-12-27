@@ -7,6 +7,7 @@
 #include <string.h>
 
 #include "panic.h"
+#include "trait.h"
 #include "vec.h"
 
 static void indent(FILE* file, const u32 depth) {
@@ -34,12 +35,16 @@ static void non_write_reflected_recursive(FILE* file, const type_info* type, con
 	} else if (type->kind == type_info_union) {
 		panic("Unimplemented. I need to add tagged union support!");
 	} else if (type->kind == type_info_opaque) {
+		const auto conversions = trait_get(primitive_conversion_trait, type);
+		if (conversions == nullptr || conversions->to_string == nullptr)
+			panic("Opaque type \"%s\" doesn't have the `to_string` primitive conversion registered!", type->name.data);
+
 		if (type->opaque_data.kind == type_info_opaque_string) {
 			fputc('"', file);
-			type->conversions.to_string(data, file);
+			conversions->to_string(data, file);
 			fputc('"', file);
 		} else {
-			type->conversions.to_string(data, file);
+			conversions->to_string(data, file);
 		}
 	}
 }
@@ -603,17 +608,18 @@ void non_free(const non_tree tree) {
 
 static non_result non_read_into_reflected_recursive(const non_tree* tree, const non_node* node, const type_info* type, void* data) {
 	// Try direct conversion first.
-	switch (node->kind) {
+	const auto conversions = trait_get(primitive_conversion_trait, type);
+	if (conversions) switch (node->kind) {
 		case non_string:
-			if (type->conversions.from_string && type->conversions.from_string(data, node->str))
+			if (conversions->from_string && conversions->from_string(data, node->str))
 				return non_ok;
 			break;
 		case non_char:
-			if (type->conversions.from_integer && type->conversions.from_integer(data, (s64)node->chr))
+			if (conversions->from_integer && conversions->from_integer(data, (s64)node->chr))
 				return non_ok;
 			break;
 		case non_number:
-			if (type->conversions.from_floating && type->conversions.from_floating(data, node->num))
+			if (conversions->from_floating && conversions->from_floating(data, node->num))
 				return non_ok;
 			break;
 		default:

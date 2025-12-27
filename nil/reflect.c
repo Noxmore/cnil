@@ -1,5 +1,6 @@
 #include "reflect.h"
 
+#include "trait.h"
 #include "ansi_colors.h"
 #include "vec.h"
 #include "internal/cwisstable.h"
@@ -80,8 +81,9 @@ bool type_info_contains_annotation(const type_info* type, const char* annotation
 }
 
 void free_reflected(const type_info* type, void* data) {
-	if (type->free != nullptr) {
-		type->free(data);
+	const destructor_trait* dtor = trait_get(destructor_trait, type);
+	if (dtor) {
+		dtor->free(data);
 		return;
 	}
 
@@ -230,7 +232,11 @@ static void debug_reflected_recursive(const void* obj, const type_info* type, co
 			else if (type->opaque_data.kind == type_info_opaque_string)
 				fputs(COLOR_STRING "\"", stdout);
 
-			type->conversions.to_string(obj, stdout);
+			const primitive_conversion_trait* conversions = trait_get(primitive_conversion_trait, type);
+			if (conversions && conversions->to_string)
+				conversions->to_string(obj, stdout);
+			else
+				fputs("<No Writer>", stdout);
 
 			if (type->opaque_data.kind == type_info_opaque_string)
 				fputc('\"', stdout);
@@ -277,18 +283,18 @@ DEFINE_TYPEDEF_INFO(void,
 		*(T*)self = (T)v;                                                        \
 		return true;                                                             \
 	}                                                                           \
-	DEFINE_TYPEDEF_INFO(T,                                                         \
+	DEFINE_TYPEDEF_INFO(T,                                                      \
 		.kind = type_info_opaque,                                                \
-		.conversions = {                                                         \
-			.to_string = T##_to_string,                                           \
-			.to_floating = T##_to_floating,                                       \
-			.to_integer = T##_to_integer,                                         \
-			.from_string = T##_from_string,                                       \
-			.from_floating = T##_from_floating,                                   \
-			.from_integer = T##_from_integer,                                     \
-		},                                                                       \
 		.opaque_data.kind = KIND,                                                \
-	)
+	)                                                                           \
+	IMPL_TRAIT(primitive_conversion_trait, T, {                                 \
+		.to_string = T##_to_string,                                              \
+		.to_floating = T##_to_floating,                                          \
+		.to_integer = T##_to_integer,                                            \
+		.from_string = T##_from_string,                                          \
+		.from_floating = T##_from_floating,                                      \
+		.from_integer = T##_from_integer,                                        \
+	})
 
 REFLECT_INTEGER(u8, "%u", type_info_opaque_uint)
 REFLECT_INTEGER(u16, "%u", type_info_opaque_uint)
@@ -343,16 +349,16 @@ static bool float_from_integer(void* self, const s64 v) {
 }
 DEFINE_TYPEDEF_INFO(float,
 	.kind = type_info_opaque,
-	.conversions = {
-		.to_string = float_to_string,
-		.to_floating = float_to_floating,
-		.to_integer = float_to_integer,
-		.from_string = float_from_string,
-		.from_floating = float_from_floating,
-		.from_integer = float_from_integer,
-	},
 	.opaque_data.kind = type_info_opaque_real,
 )
+IMPL_TRAIT(primitive_conversion_trait, float, {
+	.to_string = float_to_string,
+	.to_floating = float_to_floating,
+	.to_integer = float_to_integer,
+	.from_string = float_from_string,
+	.from_floating = float_from_floating,
+	.from_integer = float_from_integer,
+})
 
 static void double_to_string(const void* self, FILE* file) {
 	fprintf(file, "%f", *(double*)self);
@@ -383,16 +389,17 @@ static bool double_from_integer(void* self, const s64 v) {
 }
 DEFINE_TYPEDEF_INFO(double,
 	.kind = type_info_opaque,
-	.conversions = {
-		.to_string = double_to_string,
-		.to_floating = double_to_floating,
-		.to_integer = double_to_integer,
-		.from_string = double_from_string,
-		.from_floating = double_from_floating,
-		.from_integer = double_from_integer,
-	},
 	.opaque_data.kind = type_info_opaque_real,
 )
+IMPL_TRAIT(primitive_conversion_trait, double, {
+	.to_string = double_to_string,
+	.to_floating = double_to_floating,
+	.to_integer = double_to_integer,
+	.from_string = double_from_string,
+	.from_floating = double_from_floating,
+	.from_integer = double_from_integer,
+})
+
 
 static bool string_from_string(void* self, str s) {
 	*(string*)self = str_allocate(s);
@@ -403,13 +410,13 @@ static void string_to_string(const void* self, FILE* file) {
 }
 DEFINE_TYPEDEF_INFO(string,
 	.kind = type_info_opaque,
-	.free = (nil_free_fn)string_free,
-	.conversions = {
-		.to_string = string_to_string,
-		.from_string = string_from_string,
-	},
 	.opaque_data.kind = type_info_opaque_string,
 )
+IMPL_FREE(string, string_free)
+IMPL_TRAIT(primitive_conversion_trait, string, {
+	.to_string = string_to_string,
+	.from_string = string_from_string,
+})
 
 static bool str_from_string(void* self, str s) {
 	// TODO: This doesn't take ownership, should this function be nullptr?
@@ -421,10 +428,9 @@ static void str_to_string(const void* self, FILE* file) {
 }
 DEFINE_TYPEDEF_INFO(str,
 	.kind = type_info_opaque,
-	.free = nullptr,
-	.conversions = {
-		.to_string = str_to_string,
-		.from_string = str_from_string,
-	},
 	.opaque_data.kind = type_info_opaque_string,
 )
+IMPL_TRAIT(primitive_conversion_trait, str, {
+	.to_string = str_to_string,
+	.from_string = str_from_string,
+})

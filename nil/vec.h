@@ -5,13 +5,15 @@
 // #include <string.h>
 // #include <stddef.h>
 
+#define NIL_VEC_MARKER "nil_vec_marker"
+
 // Heap-allocated growable array.
-#define vec_named(T, NAME) struct REFLECT_SPECIALIZE(vec,T) vec_$_##NAME { T* data; usize len; usize cap; }
+#define vec_named(T, NAME) struct ANNOTATE(NIL_VEC_MARKER) vec_$_##NAME { T* data; usize len; usize cap; }
 // Heap-allocated growable array.
 #define vec(T) vec_named(T, T)
 // Like `vec`, but doesn't specify a struct name.
 // This can be useful when creating a vector of pointer types, but doesn't cover some cases that a named vector does. For those you should use `vec_named` or a typedef.
-#define vec_anon(T) struct REFLECT_SPECIALIZE(vec,T) { T* data; usize len; usize cap; }
+#define vec_anon(T) struct ANNOTATE(NIL_VEC_MARKER) { T* data; usize len; usize cap; }
 #define vec_free($arr) internal_vec_free((erased_vec*)($arr))
 #define vec_free_with($arr, FREE_FN) do { for (usize i = 0; i < ($arr)->len; i++) { FREE_FN(&($arr)->data[i]); } vec_free($arr); } while (false)
 // Reserves a new item onto the vector and returns the pointer to it.

@@ -23,7 +23,7 @@ void type_info_builder_free(type_info_builder* builder) {
 	string_free(&builder->name);
 	string_free(&builder->type_referral);
 	vec_free_with(&builder->annotations, string_free);
-	string_free(&builder->free_fn);
+	// string_free(&builder->free_fn);
 	if (builder->kind == type_info_struct) vec_free_with(&builder->struct_fields, field_builder_free);
 	else if (builder->kind == type_info_enum) vec_free_with(&builder->enum_variants, variant_builder_free);
 	vec_free_with(&builder->sub_types, type_info_builder_free);
