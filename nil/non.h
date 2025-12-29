@@ -120,6 +120,7 @@ typedef struct non_result {
 		non_unable_to_read_opaque, // from_* either doesn't exist or failed.
 		non_target_type_not_list, // Tried to read a list but the type being read into isn't a list.
 		non_target_type_not_defaulted, // Tried to read a type that requires creating a default value, but the trait was not implemented.
+		non_unable_to_allocate_field, // Loose pointer with no allocation instructions, unable to allocate field.
 	} error;
 	non_file_location loc;
 } non_result;

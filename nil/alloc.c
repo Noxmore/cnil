@@ -1,6 +1,5 @@
 #include "alloc.h"
 
-// #include "internal/cwisstable.h"
 #include "internal/sys_alloc.h"
 #include "memory_util.h"
 
@@ -8,16 +7,18 @@
 #include <stdlib.h>
 #include <string.h>
 
+// allocator nil_global_allocator;
+
 typedef struct arena_block {
 	struct arena_block* next;
+	void* last_alloc; // For realloc optimization.
 	u8* buffer_end;
 	u8* head;
 	u8 buffer[];
 } arena_block;
 
-
-arena_allocator create_arena() {
-	return (arena_allocator){0};
+arena_allocator arena_new() {
+	return (arena_allocator){};
 }
 
 static usize max_arena_allocation_size() {
@@ -35,32 +36,42 @@ static arena_block* create_arena_block() {
 
 	return block;
 }
-static void* arena_alloc_recursive(arena_block* block, const usize align, const usize size) {
-	u8* from = (u8*)pad_to_align((usize)block->head, align);
+static void* arena_alloc_recursive(arena_block* block, void* ptr, const usize align, const usize size) {
+	u8* from;
+	// Realloc optimization: extend the previous one.
+	if (ptr == block->last_alloc)
+		from = block->last_alloc;
+	else
+		from = (u8*)pad_to_align((usize)block->head, align);
+
 	u8* to = from + size;
 
 	// We can't fit it here, let's go to the next block!
 	if (to >= block->buffer_end) {
 		if (block->next == nullptr)
 			block->next = create_arena_block();
-		return arena_alloc_recursive(block->next, align, size);
+		return arena_alloc_recursive(block->next, ptr, align, size);
 	}
 
 	block->head = to;
 
 	return from;
 }
-void* arena_alloc(arena_allocator* arena, const usize align, const usize size) {
-	if (size >= max_arena_allocation_size()) {
-		void* ptr = aligned_alloc(align, size);
-		vec_push(&arena->big_allocations, ptr);
-		return ptr;
+void* arena_alloc(arena_allocator* arena, void* ptr, const usize align, const usize old, const usize new) {
+	if (new >= max_arena_allocation_size()) {
+		void* big_alloc = aligned_alloc(align, new);
+
+		if (ptr)
+			memcpy(big_alloc, ptr, old);
+
+		vec_push(&arena->big_allocations, big_alloc);
+		return big_alloc;
 	}
 
 	if (arena->first_block == nullptr)
 		arena->first_block = create_arena_block();
 
-	return arena_alloc_recursive(arena->first_block, align, size);
+	return arena_alloc_recursive(arena->first_block, ptr, align, new);
 }
 
 static usize arena_allocated_bytes_recursive(const arena_block* block) {
@@ -95,12 +106,35 @@ static void arena_destroy_recursive(arena_allocator* arena, arena_block* block) 
 	nil_free_page(block);
 	// arena->backing.alloc(arena->backing.ctx, block, arena_block_size(), 0);
 }
-void arena_destroy(arena_allocator arena) {
-	arena_destroy_recursive(&arena, arena.first_block);
+void arena_destroy(arena_allocator* arena) {
+	arena_destroy_recursive(arena, arena->first_block);
 
-	for (usize i = 0; i < arena.big_allocations.len; i++)
-		free(arena.big_allocations.data[i]);
-	vec_free(&arena.big_allocations);
+	for (usize i = 0; i < arena->big_allocations.len; i++)
+		free(arena->big_allocations.data[i]);
+	vec_free(&arena->big_allocations);
+}
+
+// Arena allocator interface. I use wrapper functions for better compile-time error checking.
+
+static void* arena_interface_alloc(void* ctx, void* ptr, const usize align, const usize old, const usize new) {
+	return arena_alloc(ctx, ptr, align, old, new);
+}
+
+static void arena_interface_reset(void* ctx) {
+	arena_reset(ctx);
+}
+
+static void arena_interface_destroy(void* ctx) {
+	arena_destroy(ctx);
+}
+
+allocator arena_ref(arena_allocator* arena) {
+	return (allocator){
+		.alloc = arena_interface_alloc,
+		.reset = arena_interface_reset,
+		.destroy = arena_interface_destroy,
+		.ctx = arena,
+	};
 }
 
 // TODO: If I uncomment this, fix hashset iterators to use a for loop to avoid UB.

@@ -129,11 +129,24 @@ static enum CXChildVisitResult reflect_type(CXCursor cursor, CXCursor parent, CX
 
 		CXType field_type = clang_getCursorType(cursor);
 
-		field_builder field = {0};
+		field_builder field = {};
 		field.name = cursor_display_name(cursor);
 		clang_visitChildren(cursor, push_annotations, &field.annotations);
 
-		field.is_pointer = field_type.kind == CXType_Pointer;
+		while (field_type.kind == CXType_Pointer || field_type.kind == CXType_ConstantArray) {
+			switch (field_type.kind) {
+				case CXType_Pointer:
+					field.pointer_layers++;
+					field_type = clang_getPointeeType(field_type);
+					break;
+				case CXType_ConstantArray:
+					vec_push(&field.const_array_layers, clang_getArraySize(field_type));
+					field_type = clang_getArrayElementType(field_type);
+					break;
+				default: UNREACHABLE;
+			}
+		}
+
 		field.is_const = clang_isConstQualifiedType(field_type);
 
 		if (field_type.kind == CXType_Pointer)
@@ -152,9 +165,8 @@ static enum CXChildVisitResult reflect_type(CXCursor cursor, CXCursor parent, CX
 			const CXCursor field_type_cursor = clang_getTypeDeclaration(field_type);
 
 			sub_type->kind = clang_getCursorKind(field_type_cursor) == CXCursor_EnumDecl ? type_info_enum : type_info_struct;
-			// printf("%i\n", snprintf(nullptr, 0, "%s::%s", type->name.data, field.name.data));
-			sub_type->name = string_format("%s::%s", type->name.data, field.name.data); // struct_name::field
-			sub_type->type_referral = string_format("typeof((%s){0}.%s)", type->type_referral.data, field.name.data); // sizeof((struct S){0}.field)
+			sub_type->name = string_format("%s::%s", type->name.data, field.name.data);
+			sub_type->type_referral = string_format("typeof((%s){}.%s)", type->type_referral.data, field.name.data);
 			sub_type->anonymous = true;
 			clang_visitChildren(field_type_cursor, reflect_type, sub_type);
 

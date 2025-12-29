@@ -36,7 +36,9 @@ typedef struct field_builder {
 	vec(string) annotations;
 	string field_type;
 	type_info_builder* anon_type;
-	bool is_pointer;
+	vec(usize) const_array_layers;
+	// How many layers of pointers point to the type.
+	u32 pointer_layers;
 	bool is_const;
 } field_builder;
 void field_builder_free(field_builder* builder);

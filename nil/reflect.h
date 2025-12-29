@@ -24,11 +24,16 @@ typedef struct type_info_field {
 	const str* annotations;
 	usize annotation_count;
 
-	const type_info* field_type;
+	const type_info* type;
 
 	u32 struct_offset;
+	// Because of pointers and arrays, the size of the field might be different from the size of `field_type`.
+	u32 size;
 
-	bool is_pointer;
+	const usize* const_array_layers;
+	usize const_array_layer_count;
+
+	u32 pointer_layers;
 	bool is_const;
 } type_info_field;
 
@@ -66,12 +71,6 @@ typedef struct type_info {
 	const str* annotations;
 	usize annotation_count;
 
-	/*// Custom free function. Can be nullptr.
-	nil_free_fn free;
-
-	// Conversion functions. Mainly used for opaque/primitive types.
-	type_info_conversions conversions;*/
-
 	union {
 		struct {
 			usize field_count;
@@ -105,11 +104,36 @@ typedef struct type_info {
 	};
 } type_info;
 
-void type_info_debug_print(const type_info* type, FILE* file);
-bool type_info_contains_annotation(const type_info* type, str annotation);
+/*// Little container struct for type-erased reflected data.
+typedef struct reflected_object {
+	const type_info* type;
+	void* data;
+} reflected_object;
+// Passthrough to `free_reflected` for convenience in certain situations.
+void reflected_object_free(reflected_object* obj);*/
 
 // If applicable, calls the reflected free function of `type` on `data`. Otherwise, recursively searches for the free function in fields.
 void free_reflected(const type_info* type, void* data);
+// Attempts to clone a reflected object. If the `clone_trait` is implemented for `type`, uses that, else recursively attempts to clone fields.
+// If the object is not cloneable, either by `clone_trait` containing a nullptr function, or a loose pointer, returns `false`.
+bool clone_reflected(const type_info* type, const void* from, void* into);
+// `clone_reflected` but without checking `is_reflected_cloneable`. Only use this if you know exactly what you're doing.
+void clone_reflected_unchecked(const type_info* type, const void* from, void* into);
+// Returns whether a reflected type is cloneable. This is the same result you get out of `clone_reflected`, but doesn't actually clone anything.
+bool is_reflected_cloneable(const type_info* type);
+
+void type_info_debug_print(const type_info* type, FILE* file);
+bool type_info_contains_annotation(const type_info* type, str annotation);
+
+// Resolves the location at which a reflected field of a struct points to, specifically dereferencing all pointers.
+// Use for recursive functions, and don't forget to check for nullptr!
+void* type_info_resolve_field_ptr(const type_info_field* field, void* struct_data);
+// `type_info_resolve_field_ptr` but using const pointers.
+const void* type_info_resolve_field_const_ptr(const type_info_field* field, const void* struct_data);
+// Version of `type_info_resolve_field_ptr` meant for writing into the struct, usually for deserialization.
+// If the field is behind a pointer, and it isn't nullptr, dereferences it and returns as normal. If it IS nullptr, Attempts to find a way to allocate it based on its annotations.
+// If it fails to allocate, returns nullptr.
+void* type_info_resolve_field_ptr_allocate(const type_info_field* field, void* struct_data);
 
 typedef struct type_registry type_registry;
 
@@ -137,6 +161,9 @@ void nil_register_default_types(type_registry* reg);
 #define DEFINE_TYPE_INFO(T, ...) const type_info NIL_TYPE_INFO_NAME(T) = { .mutable = true, .name = s(#T), __VA_ARGS__ };
 // `DEFINE_TYPE_INFO` can't automatically specify size and alignment because of type namespaces. This assumes T is in the global namespace.
 #define DEFINE_TYPEDEF_INFO(T, ...) DEFINE_TYPE_INFO(T, .size = sizeof(T), .align = alignof(T), __VA_ARGS__)
+
+// Shorthand for defining a field for a `type_info`. This is less prone to breaking if the `type_info` structure changes, so you should always use this.
+#define DEFINE_TYPE_INFO_FIELD(OWNER, TYPE, NAME, ...) { .name = s(#NAME), .struct_offset = __builtin_offsetof(OWNER, NAME), .size = sizeof((OWNER){}.NAME), .type = &NIL_TYPE_INFO_NAME(TYPE), __VA_ARGS__ }
 
 #define NIL_ELABORATED_TYPE_OPTION(_1, _2, NAME, ...) NAME
 
@@ -213,9 +240,6 @@ str reflect_enum_name_from_variant_value(const type_info* type, s64 variant_valu
 // Returns whether the enum represented by `type` contains a variant with the specified value.
 // If the type does not represent an enum, returns `false`.
 bool reflected_enum_contains_variant_value(const type_info* type, s64 variant_value);
-
-// Internal tool for converting an arbitrarily-sized integer from reflected types. Often used with `reflect_enum_name_from_variant_value`.
-// s64 nil_get_any_sized_int(const void* data, u8 type_size);
 
 // Prints an object out to the console dynamically using its reflected `type_info`.
 void debug_reflected(const void* obj, const type_info* type);

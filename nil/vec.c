@@ -126,11 +126,11 @@ static bool is_type_vec(const type_info* type) {
 		type->kind != type_info_struct ||
 		type->struct_data.field_count != 3 ||
 		!str_eq(type->struct_data.fields[0].name, s("data")) ||
-		!type->struct_data.fields[0].is_pointer ||
+		type->struct_data.fields[0].pointer_layers != 1 ||
 		!str_eq(type->struct_data.fields[1].name, s("len")) ||
-		type->struct_data.fields[1].field_type != TYPE_INFO(usize) ||
+		type->struct_data.fields[1].type != TYPE_INFO(usize) ||
 		!str_eq(type->struct_data.fields[2].name, s("cap")) ||
-		type->struct_data.fields[2].field_type != TYPE_INFO(usize)
+		type->struct_data.fields[2].type != TYPE_INFO(usize)
 	) {
 		panic("Invalid type marked as vector: %s", type->name.data);
 	}
@@ -212,7 +212,7 @@ static bool recognize_list_for_vecs(const type_info* type, void* data) {
 		return false;
 
 	*trait = (list_trait){
-		.element_type = type->struct_data.fields[0].field_type,
+		.element_type = type->struct_data.fields[0].type,
 
 		.len = list_vec_len,
 

@@ -17,6 +17,7 @@ void field_builder_free(field_builder* builder) {
 		type_info_builder_free(builder->anon_type);
 		free(builder->anon_type);
 	}
+	vec_free(&builder->const_array_layers);
 }
 
 void type_info_builder_free(type_info_builder* builder) {

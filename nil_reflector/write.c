@@ -12,25 +12,25 @@ static void indent(FILE* file, const u32 depth) {
 		fputc('\t', file);
 }
 
-static void write_annotations(FILE* file, const char* prefix, const char* suffix, const string* annotations, const usize annotation_count) {
-	fputs(prefix, file);
-	if (annotation_count == 0) {
-		fprintf(file, ".annotations = nullptr,");
-		fputs(suffix, file);
-	} else {
-		fprintf(file, ".annotations = (str[]){");
-		for (usize i = 0; i < annotation_count; i++) {
-			fprintf(file, "s(");
-			fprintf(file, "\"%s\"", annotations[i].data);
-			fputc(')', file);
-			if (i != annotation_count-1)
-				fprintf(file, ", ");
-		}
-		fprintf(file, "},");
-		fputs(suffix, file);
+static void write_annotations(FILE* file, const char* field_prefix, const char* field_suffix, const string* annotations, const usize annotation_count) {
+	if (annotation_count == 0)
+		return;
+
+	fputs(field_prefix, file);
+	fprintf(file, ".annotations = (str[]){");
+	for (usize i = 0; i < annotation_count; i++) {
+		fprintf(file, "s(");
+		fprintf(file, "\"%s\"", annotations[i].data);
+		fputc(')', file);
+		if (i != annotation_count-1)
+			fprintf(file, ", ");
 	}
-	fputs(prefix, file); fprintf(file, ".annotation_count = %lu,", annotation_count);
-	fputs(suffix, file);
+	fprintf(file, "},");
+	fputs(field_suffix, file);
+
+	fputs(field_prefix, file);
+	fprintf(file, ".annotation_count = %lu,", annotation_count);
+	fputs(field_suffix, file);
 }
 
 
@@ -78,13 +78,33 @@ static void write_parsed_type(FILE* file, const type_info_builder* type, const u
 			fprintf(file, ".struct_data.fields = nullptr,\n");
 		} else {
 			fprintf(file, ".struct_data.fields = (type_info_field[]){\n");
-			for (usize i = 0; i < type->struct_fields.len; i++) {
-				const field_builder* field = &type->struct_fields.data[i];
+			for (usize field_idx = 0; field_idx < type->struct_fields.len; field_idx++) {
+				const field_builder* field = &type->struct_fields.data[field_idx];
 
 				indent(file, depth+2);
 				fprintf(file, "{ .name = s(\"%s\"), ", field->name.data);
 				write_annotations(file, "", " ", field->annotations.data, field->annotations.len);
-				fprintf(file, ".field_type = ");
+
+				fprintf(file, ".struct_offset = __builtin_offsetof(%s, %s), ", type->type_referral.data, field->name.data);
+				fprintf(file, ".size = sizeof((%s){}.%s), ", type->type_referral.data, field->name.data);
+
+				if (field->const_array_layers.len > 0) {
+					fprintf(file, ".const_array_layers = (usize[]){ ");
+					for (usize i = 0; i < field->const_array_layers.len; i++) {
+						fprintf(file, "%lu", field->const_array_layers.data[i]);
+
+						if (i != field->const_array_layers.len-1)
+							fprintf(file, ", ");
+					}
+					fprintf(file, " }, .const_array_layer_count = %lu, ", field->const_array_layers.len);
+				}
+
+				if (field->pointer_layers > 0)
+					fprintf(file, ".pointer_layers = %u, ", field->pointer_layers);
+				if (field->is_const)
+					fprintf(file, ".is_const = true, ");
+
+				fprintf(file, ".type = ");
 				if (field->anon_type != nullptr) {
 					fprintf(file, "&(type_info){\n");
 					indent(file, depth + 3);
@@ -93,13 +113,11 @@ static void write_parsed_type(FILE* file, const type_info_builder* type, const u
 					fprintf(file, ".mutable = true,\n");
 					write_parsed_type(file, field->anon_type, depth + 2);
 					indent(file, depth+2);
-					fprintf(file, "}, ");
+					fprintf(file, "} ");
 				} else {
-					fprintf(file, "&NIL_TYPE_INFO_NAME(%s), ", field->field_type.data);
+					fprintf(file, "&NIL_TYPE_INFO_NAME(%s) ", field->field_type.data);
 				}
-				fprintf(file, ".struct_offset = __builtin_offsetof(%s, %s), ", type->type_referral.data, field->name.data);
-				fprintf(file, ".is_pointer = %s, ", field->is_pointer ? "true" : "false");
-				fprintf(file, ".is_const = %s ", field->is_const ? "true" : "false");
+
 				fprintf(file, "},\n");
 			}
 			fputs(body_indent, file); fprintf(file, "},\n");

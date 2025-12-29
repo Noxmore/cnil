@@ -4,6 +4,8 @@ project(cnil C)
 set(CMAKE_C_STANDARD 23)
 set(CMAKE_EXPORT_COMPILE_COMMANDS)
 
+option(NIL_TESTS, "Nil Tests")
+
 #include(FetchContent)
 #set(FETCHCONTENT_QUIET FALSE)
 #FetchContent_Declare(
@@ -40,7 +42,7 @@ add_executable(nil_reflector ${REFLECTOR_SRC_FILES})
 target_include_directories(nil_reflector PRIVATE ${CLANG_INCLUDE_DIRS})
 target_link_libraries(nil_reflector PRIVATE libclang)
 target_link_libraries(nil_reflector PRIVATE nil)
-target_include_directories(nil_reflector PRIVATE .)
+#target_include_directories(nil_reflector PRIVATE .)
 
 function(reflect_types target)
 #	get_property(system_dirs TARGET ${target} PROPERTY INTERFACE_SYSTEM_INCLUDE_DIRECTORIES)
@@ -84,6 +86,32 @@ function(reflect_types target)
 #	target_link_options(${target} PRIVATE "-Wl,--whole-archive")
 endfunction()
 
+if(${NIL_TESTS})
+	include(FetchContent)
+	set(FETCHCONTENT_QUIET FALSE)
+	FetchContent_Declare(
+		cunit
+		GIT_REPOSITORY https://github.com/tayne3/cunit.git
+		GIT_TAG v0.2.0
+	)
+	FetchContent_MakeAvailable(cunit)
+
+	file(GLOB TEST_SRC_FILES CONFIGURE_DEPENDS nil_tests/*.c)
+	add_executable(nil_tests ${TEST_SRC_FILES})
+
+	file(GLOB TEST_HEADER_FILES CONFIGURE_DEPENDS nil_tests/*.h)
+	reflect_types(nil_tests ${TEST_HEADER_FILES})
+
+	target_compile_options(nil_tests PRIVATE -fsanitize=address,undefined)
+	target_link_options(nil_tests PRIVATE -fsanitize=address,undefined)
+
+	target_link_libraries(nil_tests PRIVATE nil)
+	target_link_libraries(nil_tests PRIVATE cunit::cunit)
+
+	enable_testing()
+	add_test(NAME nil_tests COMMAND nil_tests)
+endif()
+
 #	add_library(${reflected_target} OBJECT ${generated_sources})
 #	add_custom_target(${reflected_target} DEPENDS ${generated_sources})
 #	add_dependencies(${reflected_target} nil_reflector)
@@ -96,7 +124,3 @@ endfunction()
 #	target_link_options(nil_reflector PRIVATE -fsanitize=address)
 #endif()
 #target_link_libraries(nil PUBLIC swisstable)
-
-# TODO: we should remove this or find a better way?
-#add_executable(tests test.c)
-#target_link_libraries(tests nil)

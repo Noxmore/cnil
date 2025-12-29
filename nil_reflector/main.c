@@ -31,7 +31,7 @@ int main(const int argc, const char* const* argv) {
 
 	// fprintf(stderr, ANSI_STYLE(GREEN, BOLD) "  Reflecting " ANSI_STYLE(WHITE) "%s " ANSI_STYLE(BRIGHT_BLACK) "(%s)" ANSI_RESET "\n", cstr_get_filename(src_path), cstr_get_filename(out_path));
 
-	reflect_ctx ctx = {0};
+	reflect_ctx ctx = {};
 
 	char canonical_file_path[PATH_MAX];
 	realpath(src_path, canonical_file_path);

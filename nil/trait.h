@@ -75,6 +75,7 @@ typedef struct destructor_trait {
 } destructor_trait;
 DECLARE_TRAIT(destructor_trait)
 #define IMPL_FREE(T, FN) \
+	static_assert(sizeof(T)|1); \
 	static void erased_free_fn_##T(void* data) { FN((T*)data); } \
 	IMPL_TRAIT(destructor_trait, T, { .free = erased_free_fn_##T })
 
@@ -85,6 +86,17 @@ DECLARE_TRAIT(default_trait)
 #define IMPL_ZEROED_DEFAULT(T) \
 	static void zero_out_default_##T(void* self) { *(T*)self = (T){0}; } \
 	IMPL_TRAIT(default_trait, T, { .set_default = zero_out_default_##T })
+
+typedef struct clone_trait {
+	// Can be nullptr, meaning this object is not cloneable.
+	void (*clone_into)(const void* self, void* other);
+} clone_trait;
+DECLARE_TRAIT(clone_trait)
+
+typedef struct type_indirection_trait {
+	const type_info* (*type)(const void* self, const type_registry* registry);
+	void* (*data)(const void* self, const type_registry* registry);
+} type_indirection_trait;
 
 // `type_info` conversion functions. Mainly used for opaque/primitive types.
 // Any and all of these can be null, which signals "unimplemented" or "unsupported".

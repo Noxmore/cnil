@@ -6,17 +6,49 @@
 #include "vec.h"
 // #include "macro_utils.h"
 
+
+
+typedef void* (*nil_alloc_fn)(void* ctx, void* ptr, usize align, usize old, usize new);
+
+/*typedef struct allocator_ref {
+	nil_alloc_fn alloc;
+	void* ctx;
+} allocator_ref;*/
+
+typedef struct allocator {
+	// Expose a .ref syntax while still having the function just one '.' away.
+	/*union {
+		allocator_ref ref;
+
+		struct {
+			nil_alloc_fn alloc;
+			void* ctx;
+		};
+	};*/
+	nil_alloc_fn alloc;
+	void (*reset)(void* ctx);
+	void (*destroy)(void* ctx);
+	void* ctx;
+} allocator;
+
+typedef const allocator* allocator_ref;
+
+// extern allocator nil_global_allocator;
+
+// Arena allocator that directly uses OS pages, removing malloc overhead.
 typedef struct arena_allocator {
 	void* first_block;
-	// For allocations bigger than the page size, we allocate normally.
+	// For allocations bigger than the page size, we use malloc.
 	vec_anon(void*) big_allocations;
 } arena_allocator;
 
-arena_allocator create_arena();
-void* arena_alloc(arena_allocator* arena, usize align, usize size);
+arena_allocator arena_new();
+void* arena_alloc(arena_allocator* arena, void* ptr, usize align, usize old, usize new);
 usize arena_allocated_bytes(const arena_allocator* arena);
 void arena_reset(arena_allocator* arena);
-void arena_destroy(arena_allocator arena);
+void arena_destroy(arena_allocator* arena);
+
+allocator arena_ref(arena_allocator* arena);
 
 /*#ifndef NIL_ALLOCATOR_PREFIX
 #define NIL_ALLOCATOR_PREFIX

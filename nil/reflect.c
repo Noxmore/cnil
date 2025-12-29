@@ -25,6 +25,13 @@ s64 nil_bytes_to_integer(const u8* in, const usize n) {
 	return value;
 }
 
+/*usize type_ref_size(const type_ref type) {
+	return type.pointer_layers > 0 ? sizeof(void*) : type.info->size;
+}
+usize type_ref_align(const type_ref type) {
+	return type.pointer_layers > 0 ? alignof(void*) : type.info->align;
+}*/
+
 #define COLOR_COMMENT ANSI_STYLE(BRIGHT_BLACK)
 #define COLOR_KEYWORD ANSI_STYLE(RED)
 #define COLOR_NUMBER ANSI_STYLE(MAGENTA)
@@ -54,13 +61,27 @@ void type_info_debug_print(const type_info* type, FILE* file) {
 	fprintf(file, COLOR_KEYWORD"%s "COLOR_TYPE"%s " SIZE_ALIGN_FMT" {\n", short_type_kind(type), type->name.data, type->size, type->align);
 
 	if (type->kind == type_info_struct || type->kind == type_info_union) {
-		for (usize i = 0; i < type->struct_data.field_count; i++) {
-			const type_info_field* field = &type->struct_data.fields[i];
-			fprintf(file, "\t%s%s%s"ANSI_RESET"%s %s;\n", field->is_const ? COLOR_KEYWORD"const " : "",
-				field->field_type->kind == type_info_opaque ? COLOR_KEYWORD : COLOR_TYPE,
-				field->field_type->name.data,
-				field->is_pointer ? "*" : "",
-				field->name.data);
+		for (usize field_idx = 0; field_idx < type->struct_data.field_count; field_idx++) {
+			const type_info_field* field = &type->struct_data.fields[field_idx];
+
+			fputc('\t', file);
+			if (field->is_const)
+				fputs("const ", file);
+
+			fputs(field->type->kind == type_info_opaque ? COLOR_KEYWORD : COLOR_TYPE, file);
+			fputs(field->type->name.data, file);
+			fputs(ANSI_RESET, file);
+
+			for (usize i = 0; i < field->pointer_layers; i++)
+				fputc('*', file);
+
+			fputc(' ', file);
+			fputs(field->name.data, file);
+
+			for (usize i = 0; i < field->const_array_layer_count; i++)
+				fprintf(file, "[%lu]", field->const_array_layers[i]);
+
+			fputs(";\n", file);
 		}
 	} else if (type->kind == type_info_enum) {
 		for (usize i = 0; i < type->enum_data.variant_count; i++) {
@@ -80,7 +101,33 @@ bool type_info_contains_annotation(const type_info* type, const str annotation) 
 	return false;
 }
 
+void* type_info_resolve_field_ptr(const type_info_field* field, void* struct_data) {
+	void* field_ptr = struct_data + field->struct_offset;
+
+	for (usize i = 0; i < field->pointer_layers && field_ptr != nullptr; i++) {
+		field_ptr = *(void**)field_ptr;
+	}
+
+	return field_ptr;
+}
+
+const void* type_info_resolve_field_const_ptr(const type_info_field* field, const void* struct_data) {
+	// This doesn't change any data anyway, so we can just reuse the function.
+	return type_info_resolve_field_ptr(field, (void*)struct_data);
+}
+void* type_info_resolve_field_ptr_allocate(const type_info_field* field, void* struct_data) {
+	// TODO: Malloc annotations like the documentation says.
+	return type_info_resolve_field_ptr(field, struct_data);
+}
+
+void reflected_object_free(reflected_object* obj) {
+	free_reflected(obj->type, obj->data);
+}
+
 void free_reflected(const type_info* type, void* data) {
+	if (data == nullptr)
+		return;
+
 	const destructor_trait* dtor = trait_get(destructor_trait, type);
 	if (dtor) {
 		dtor->free(data);
@@ -93,9 +140,62 @@ void free_reflected(const type_info* type, void* data) {
 
 	for (usize i = 0; i < type->struct_data.field_count; i++) {
 		const type_info_field* field = &type->struct_data.fields[i];
-		free_reflected(field->field_type, data + field->struct_offset);
+		free_reflected(field->type, type_info_resolve_field_ptr(field, data));
+
+		// TODO: Boxed ptr freeing?
+		assert(field->pointer_layers == 0);
 	}
 }
+
+bool clone_reflected(const type_info* type, const void* from, void* into) {
+	// We can't have partial clones because of possible allocations, so we have to make sure this object is cloneable first.
+	if (from == nullptr || into == nullptr || !is_reflected_cloneable(type))
+		return false;
+
+	clone_reflected_unchecked(type, from, into);
+	return true;
+}
+
+void clone_reflected_unchecked(const type_info* type, const void* from, void* into) {
+	const clone_trait* cloner = trait_get(clone_trait, type);
+	if (cloner) {
+		cloner->clone_into(from, into);
+		return;
+	}
+
+	if (type->kind != type_info_struct) {
+		memcpy(into, from, type->size);
+		return;
+	}
+
+	for (usize i = 0; i < type->struct_data.field_count; i++) {
+		const type_info_field* field = &type->struct_data.fields[i];
+		clone_reflected(field->type, from + field->struct_offset, into + field->struct_offset);
+	}
+}
+
+bool is_reflected_cloneable(const type_info* type) {
+	const clone_trait* cloner = trait_get(clone_trait, type);
+	if (cloner) {
+		return cloner->clone_into != nullptr;
+	}
+
+	// TODO: union support
+	if (type->kind == type_info_union)
+		return false;
+
+	if (type->kind == type_info_struct) for (usize i = 0; i < type->struct_data.field_count; i++) {
+		const type_info_field* field = &type->struct_data.fields[i];
+		if (field->pointer_layers > 0)
+			return false;
+
+		if (!is_reflected_cloneable(field->type))
+			return false;
+	}
+
+	return true;
+}
+
 
 CWISS_DECLARE_FLAT_HASHMAP(registry_index_map, const type_info*, usize);
 
@@ -208,18 +308,17 @@ static void debug_reflected_recursive(const void* obj, const type_info* type, co
 				puts(COLOR_KEYWORD "struct" ANSI_RESET " {");
 			}
 
-			for (usize i = 0; i < type->struct_data.field_count; i++) {
+			for (usize field_idx = 0; field_idx < type->struct_data.field_count; field_idx++) {
 				indent(depth + 1);
-				const type_info_field* field = &type->struct_data.fields[i];
+				const type_info_field* field = &type->struct_data.fields[field_idx];
 				printf(".%s = ", field->name.data);
 
-				const void* field_ptr = obj + field->struct_offset;
+				const void* field_ptr = type_info_resolve_field_const_ptr(field, obj);
 
-				if (field->is_pointer) {
-					debug_reflected_recursive(*(void**)field_ptr, field->field_type, depth + 1);
-				} else {
-					debug_reflected_recursive(field_ptr, field->field_type, depth + 1);
-				}
+				if (field_ptr)
+					debug_reflected_recursive(field_ptr, field->type, depth + 1);
+				else
+					printf(COLOR_KEYWORD "nullptr");
 
 				puts(ANSI_RESET ",");
 			}

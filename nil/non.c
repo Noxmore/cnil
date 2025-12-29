@@ -48,7 +48,7 @@ static void non_write_reflected_recursive(FILE* file, const type_info* type, con
 			indent(file, inner_depth);
 			fputs(field->name.data, file);
 			fputc(' ', file);
-			non_write_reflected_recursive(file, field->field_type, data + field->struct_offset, inner_depth);
+			non_write_reflected_recursive(file, field->type, type_info_resolve_field_const_ptr(field, data), inner_depth);
 			fputc('\n', file);
 		}
 
@@ -393,6 +393,7 @@ static const char* error_code_string(const enum non_error error) {
 		case non_unable_to_read_opaque: return "Unable to read opaque type";
 		case non_target_type_not_list: return "Tried to read a list but the type being read into isn't a list";
 		case non_target_type_not_defaulted: return "Tried to read a type that requires creating a default value, but the trait was not implemented";
+		case non_unable_to_allocate_field: return "Loose pointer with no allocation instructions, unable to allocate field";
 	}
 	UNREACHABLE;
 }
@@ -454,7 +455,7 @@ static non_node_kind node_kind_from_token(enum token_type token_type) {
 }
 
 non_result non_parse(string s, non_tree* tree) {
-	vec(token) tokens = {0};
+	vec(token) tokens = {};
 
 	const non_result tokenize_result = non_tokenize(s, &tokens);
 	if (!tokenize_result.ok) {
@@ -690,7 +691,11 @@ static non_result non_read_into_reflected_recursive(const non_tree* tree, const 
 					if (child->child_count != 1)
 						return non_error(non_invalid_map_value, child->loc);
 
-					non_try(non_read_into_reflected_recursive(tree, &tree->nodes[child->first_child], field->field_type, data + field->struct_offset));
+					void* field_ptr = type_info_resolve_field_ptr_allocate(field, data);
+					if (field_ptr == nullptr)
+						return non_error(non_unable_to_allocate_field, child->loc);
+
+					non_try(non_read_into_reflected_recursive(tree, &tree->nodes[child->first_child], field->type, field_ptr));
 
 					break;
 				}
@@ -741,6 +746,7 @@ non_result non_read_into_reflected(FILE* file, const type_info* type, void* data
 	const non_result read_res = non_read_into_reflected_recursive(&tree, &tree.nodes[0], type, data);
 	if (!read_res.ok) {
 		non_print_error(stderr, read_res, string_as_slice(&s));
+		// TODO: memory can very easily leak from this, this is where an allocator would be very useful.
 		return read_res;
 	}
 

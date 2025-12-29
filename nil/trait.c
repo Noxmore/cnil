@@ -159,5 +159,6 @@ usize total_implemented_traits() {
 
 DEFINE_TRAIT(destructor_trait, nullptr)
 DEFINE_TRAIT(default_trait, nullptr)
+DEFINE_TRAIT(clone_trait, nullptr)
 DEFINE_TRAIT(primitive_conversion_trait, nullptr)
 DEFINE_TRAIT(list_trait, nullptr)
