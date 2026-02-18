@@ -5,9 +5,9 @@
 #include "data.h"
 #include "parse.h"
 #include "write.h"
+#include "allocator.h"
 
 #include "nil/ansi_colors.h"
-#include "nil/string.h"
 #include "nil/reflect.h"
 
 // TODO: How do we handle vectors?
@@ -31,6 +31,9 @@ int main(const int argc, const char* const* argv) {
 
 	// fprintf(stderr, ANSI_STYLE(GREEN, BOLD) "  Reflecting " ANSI_STYLE(WHITE) "%s " ANSI_STYLE(BRIGHT_BLACK) "(%s)" ANSI_RESET "\n", cstr_get_filename(src_path), cstr_get_filename(out_path));
 
+	arena_allocator arena = arena_new();
+	alloc = arena_ref(&arena);
+
 	reflect_ctx ctx = {};
 
 	char canonical_file_path[PATH_MAX];
@@ -41,7 +44,8 @@ int main(const int argc, const char* const* argv) {
 	parse_file(src_path, &ctx, argv + 1, argc - 3);
 
 	if (ctx.had_error) {
-		reflect_ctx_free(&ctx);
+		// reflect_ctx_free(&ctx);
+		arena_destroy(&arena);
 		return 1;
 	}
 
@@ -56,5 +60,6 @@ int main(const int argc, const char* const* argv) {
 
 	write_parsed_types(output, &ctx, src_path);
 
-	reflect_ctx_free(&ctx);
+	// reflect_ctx_free(&ctx);
+	arena_destroy(&arena);
 }

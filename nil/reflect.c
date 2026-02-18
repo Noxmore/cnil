@@ -120,9 +120,9 @@ void* type_info_resolve_field_ptr_allocate(const type_info_field* field, void* s
 	return type_info_resolve_field_ptr(field, struct_data);
 }
 
-void reflected_object_free(reflected_object* obj) {
+/*void reflected_object_free(reflected_object* obj) {
 	free_reflected(obj->type, obj->data);
-}
+}*/
 
 void free_reflected(const type_info* type, void* data) {
 	if (data == nullptr)
@@ -205,14 +205,14 @@ typedef struct type_registry {
 } type_registry;
 
 type_registry* type_registry_new() {
-	return type_registry_new_with(40); // Semi-random number. Doesn't matter that much.
+	return type_registry_new_with(32); // Semi-random number. Doesn't matter that much.
 }
 
 type_registry* type_registry_new_with(const usize reserve) {
 	type_registry* reg = malloc(sizeof(type_registry));
 	memset(reg, 0, sizeof(type_registry));
 
-	vec_reserve(&reg->linear, reserve);
+	vec_reserve(&reg->linear, staticalloc, reserve);
 	reg->index_map = registry_index_map_new(reserve);
 
 	return reg;
@@ -223,7 +223,7 @@ void type_register(type_registry* reg, const type_info* type) {
 		panic("Type registry already contains %s", type->name.data);
 
 	registry_index_map_insert(&reg->index_map, &(registry_index_map_Entry){ .key = type, .val = reg->linear.len });
-	vec_push(&reg->linear, type);
+	vec_push(&reg->linear, staticalloc, type);
 }
 usize type_registry_size(const type_registry* reg) {
 	return reg->linear.len;
@@ -243,7 +243,7 @@ const type_info* type_registry_get(const type_registry* reg, const usize index) 
 }
 
 void type_registry_free(type_registry* reg) {
-	vec_free(&reg->linear);
+	vec_free(&reg->linear, staticalloc);
 	registry_index_map_destroy(&reg->index_map);
 	free(reg);
 }
@@ -365,48 +365,48 @@ DEFINE_TYPEDEF_INFO(void,
 	.opaque_data.kind = type_info_opaque_void,
 )
 
-#define REFLECT_INTEGER(T, FMT, KIND)                                          \
-	static void T##_write_string(const void* self, FILE* file) {                \
-		fprintf(file, FMT, *(T*)self);                                           \
-	}                                                                           \
-	static string T##_to_string(const void* self) {                             \
-		return string_format(FMT, *(T*)self);                                    \
-	}                                                                           \
-	static double T##_to_floating(const void* self) {                           \
-		return (double)*(T*)self;                                                \
-	}                                                                           \
-	static s64 T##_to_integer(const void* self) {                               \
-		return (s64)*(T*)self;                                                   \
-	}                                                                           \
-	static bool T##_from_string(void* self, const str s) {                      \
-		if (s.len >= 30) return false;                                           \
-		char buf[30];                                                            \
-		memcpy(buf, s.data, s.len);                                              \
-		buf[s.len] = '\0';                                                       \
-		char* end;                                                               \
-		*(T*)self = strtol(buf, &end, 10);                                       \
-		return end != buf;                                                       \
-	}                                                                           \
-	static bool T##_from_floating(void* self, const double v) {                 \
-		*(T*)self = (T)v;                                                        \
-		return true;                                                             \
-	}                                                                           \
-	static bool T##_from_integer(void* self, const s64 v) {                     \
-		*(T*)self = (T)v;                                                        \
-		return true;                                                             \
-	}                                                                           \
-	DEFINE_TYPEDEF_INFO(T,                                                      \
-		.kind = type_info_opaque,                                                \
-		.opaque_data.kind = KIND,                                                \
-	)                                                                           \
-	IMPL_TRAIT(primitive_conversion_trait, T, {                                 \
-		.write_string = T##_write_string,                                              \
-		.to_string = T##_to_string,                                              \
-		.to_floating = T##_to_floating,                                          \
-		.to_integer = T##_to_integer,                                            \
-		.from_string = T##_from_string,                                          \
-		.from_floating = T##_from_floating,                                      \
-		.from_integer = T##_from_integer,                                        \
+#define REFLECT_INTEGER(T, FMT, KIND)                                                     \
+	static void T##_write_string(const void* self, FILE* file) {                           \
+		fprintf(file, FMT, *(T*)self);                                                      \
+	}                                                                                      \
+	static string T##_to_string(const void* self, allocator_ref allocator) {               \
+		return string_format(allocator, FMT, *(T*)self);                                    \
+	}                                                                                      \
+	static double T##_to_floating(const void* self) {                                      \
+		return (double)*(T*)self;                                                           \
+	}                                                                                      \
+	static s64 T##_to_integer(const void* self) {                                          \
+		return (s64)*(T*)self;                                                              \
+	}                                                                                      \
+	static bool T##_from_string(void* self, const str s, allocator_ref allocator) {        \
+		if (s.len >= 30) return false;                                                      \
+		char buf[30];                                                                       \
+		memcpy(buf, s.data, s.len);                                                         \
+		buf[s.len] = '\0';                                                                  \
+		char* end;                                                                          \
+		*(T*)self = strtol(buf, &end, 10);                                                  \
+		return end != buf;                                                                  \
+	}                                                                                      \
+	static bool T##_from_floating(void* self, const double v, allocator_ref allocator) {   \
+		*(T*)self = (T)v;                                                                   \
+		return true;                                                                        \
+	}                                                                                      \
+	static bool T##_from_integer(void* self, const s64 v, allocator_ref allocator) {       \
+		*(T*)self = (T)v;                                                                   \
+		return true;                                                                        \
+	}                                                                                      \
+	DEFINE_TYPEDEF_INFO(T,                                                                 \
+		.kind = type_info_opaque,                                                           \
+		.opaque_data.kind = KIND,                                                           \
+	)                                                                                      \
+	IMPL_TRAIT(primitive_conversion_trait, T, {                                            \
+		.write_string = T##_write_string,                                                   \
+		.to_string = T##_to_string,                                                         \
+		.to_floating = T##_to_floating,                                                     \
+		.to_integer = T##_to_integer,                                                       \
+		.from_string = T##_from_string,                                                     \
+		.from_floating = T##_from_floating,                                                 \
+		.from_integer = T##_from_integer,                                                   \
 	})
 
 REFLECT_INTEGER(u8, "%u", type_info_opaque_uint)
@@ -436,8 +436,8 @@ REFLECT_INTEGER(long, "%li", type_info_opaque_sint)
 static void float_write_string(const void* self, FILE* file) {
 	fprintf(file, "%f", *(float*)self);
 }
-static string float_to_string(const void* self) {
-	return string_format("%f", *(float*)self);
+static string float_to_string(const void* self, allocator_ref allocator) {
+	return string_format(allocator, "%f", *(float*)self);
 }
 static double float_to_floating(const void* self) {
 	return (double)*(float*)self;
@@ -445,7 +445,7 @@ static double float_to_floating(const void* self) {
 static s64 float_to_integer(const void* self) {
 	return (s64)*(float*)self;
 }
-static bool float_from_string(void* self, const str s) {
+static bool float_from_string(void* self, const str s, allocator_ref allocator) {
 	if (s.len >= 64) return false;
 	char buf[64];
 	memcpy(buf, s.data, s.len);
@@ -455,11 +455,11 @@ static bool float_from_string(void* self, const str s) {
 	*(float*)self = strtof(buf, &end);
 	return end != buf;
 }
-static bool float_from_floating(void* self, const double v) {
+static bool float_from_floating(void* self, const double v, allocator_ref allocator) {
 	*(float*)self = (float)v;
 	return true;
 }
-static bool float_from_integer(void* self, const s64 v) {
+static bool float_from_integer(void* self, const s64 v, allocator_ref allocator) {
 	*(float*)self = (float)v;
 	return true;
 }
@@ -480,8 +480,8 @@ IMPL_TRAIT(primitive_conversion_trait, float, {
 static void double_write_string(const void* self, FILE* file) {
 	fprintf(file, "%f", *(double*)self);
 }
-static string double_to_string(const void* self) {
-	return string_format("%f", *(double*)self);
+static string double_to_string(const void* self, allocator_ref allocator) {
+	return string_format(allocator, "%f", *(double*)self);
 }
 static double double_to_floating(const void* self) {
 	return *(double*)self;
@@ -489,7 +489,7 @@ static double double_to_floating(const void* self) {
 static s64 double_to_integer(const void* self) {
 	return (s64)*(double*)self;
 }
-static bool double_from_string(void* self, const str s) {
+static bool double_from_string(void* self, const str s, allocator_ref allocator) {
 	if (s.len >= 128) return false;
 	char buf[128];
 	memcpy(buf, s.data, s.len);
@@ -499,11 +499,11 @@ static bool double_from_string(void* self, const str s) {
 	*(float*)self = strtof(buf, &end);
 	return end != buf;
 }
-static bool double_from_floating(void* self, const double v) {
+static bool double_from_floating(void* self, const double v, allocator_ref allocator) {
 	*(double*)self = v;
 	return true;
 }
-static bool double_from_integer(void* self, const s64 v) {
+static bool double_from_integer(void* self, const s64 v, allocator_ref allocator) {
 	*(double*)self = (double)v;
 	return true;
 }
@@ -522,21 +522,21 @@ IMPL_TRAIT(primitive_conversion_trait, double, {
 })
 
 
-static bool string_from_string(void* self, str s) {
-	*(string*)self = str_allocate(s);
+static bool string_from_string(void* self, str s, allocator_ref allocator) {
+	*(string*)self = str_allocate(s, allocator);
 	return true;
 }
 static void string_write_string(const void* self, FILE* file) {
 	fputs(((string*)self)->data, file);
 }
-static string string_to_string(const void* self) {
-	return string_clone(*(string*)self);
+static string string_to_string(const void* self, allocator_ref allocator) {
+	return string_clone(self, allocator);
 }
 DEFINE_TYPEDEF_INFO(string,
 	.kind = type_info_opaque,
 	.opaque_data.kind = type_info_opaque_string,
 )
-IMPL_FREE(string, string_free)
+// IMPL_FREE(string, string_free) // TODO: allocator-supplied free?
 IMPL_TRAIT(primitive_conversion_trait, string, {
 	.write_string = string_write_string,
 	.to_string = string_to_string,
@@ -546,13 +546,13 @@ IMPL_TRAIT(primitive_conversion_trait, string, {
 static void str_write_string(const void* self, FILE* file) {
 	fputs(((str*)self)->data, file);
 }
-static string str_to_string(const void* self) {
-	return str_allocate(*(str*)self);
+static string str_to_string(const void* self, allocator_ref allocator) {
+	return str_allocate(*(str*)self, allocator);
 }
-static bool str_from_string(void* self, str s) {
-	// TODO: This doesn't take ownership, should this function be nullptr?
-	*(str*)self = s;
-	return true;
+static bool str_from_string(void* self, str s, allocator_ref allocator) {
+	/*// TODO: This doesn't take ownership, should this function be nullptr?
+	*(str*)self = s;*/
+	return false;
 }
 DEFINE_TYPEDEF_INFO(str,
 	.kind = type_info_opaque,

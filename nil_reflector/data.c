@@ -4,7 +4,7 @@
 
 #include "nil/hash.h"
 
-void variant_builder_free(variant_builder* builder) {
+/*void variant_builder_free(variant_builder* builder) {
 	string_free(&builder->name);
 	vec_free_with(&builder->annotations, string_free);
 }
@@ -31,7 +31,7 @@ void type_info_builder_free(type_info_builder* builder) {
 }
 void reflect_ctx_free(reflect_ctx* ctx) {
 	vec_free_with(&ctx->types, type_info_builder_free);
-}
+}*/
 
 /*u64 type_hash(const type_info_builder* type) {
 	u64 seed = nil_hash_single(type->kind);

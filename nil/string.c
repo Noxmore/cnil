@@ -10,7 +10,7 @@
 #include <sys/stat.h>
 
 
-string string_new(const char* str) {
+string string_new(const char* str, allocator_ref allocator) {
 	if (str == nullptr)
 		return EMPTY_STRING;
 
@@ -21,7 +21,7 @@ string string_new(const char* str) {
 
 	const usize cap = len + 1; // Account for the null-terminator.
 
-	char* data = malloc(cap);
+	char* data = allocator.alloc(allocator.ctx, nullptr, alignof(char), 0, cap);
 	memcpy(data, str, cap);
 
 	return (string){
@@ -31,9 +31,9 @@ string string_new(const char* str) {
 	};
 }
 
-string string_sized(const usize len) {
+string string_sized(const usize len, allocator_ref allocator) {
 	const usize cap = len + 1; // Account for the null-terminator.
-	char* data = malloc(cap);
+	char* data = allocator.alloc(allocator.ctx, nullptr, alignof(char), 0, cap);
 	data[len] = '\0';
 
 	return (string){
@@ -43,13 +43,13 @@ string string_sized(const usize len) {
 	};
 }
 
-string string_concat_array(const usize str_count, const str strs[static str_count]) {
+string string_concat_array(allocator_ref allocator, const usize str_count, const str strs[static str_count]) {
 	usize total_len = 0;
 
 	for (usize i = 0; i < str_count; i++)
 		total_len += strs[i].len;
 
-	string s = string_sized(total_len);
+	string s = string_sized(total_len, allocator);
 
 	char* cursor = s.data;
 
@@ -62,13 +62,11 @@ string string_concat_array(const usize str_count, const str strs[static str_coun
 	return s;
 }
 
-void string_free(string* str) {
-	if (str->data)
-		free(str->data);
-	*str = EMPTY_STRING;
+void string_free(string str, allocator_ref allocator) {
+	allocator.alloc(allocator.ctx, str.data, alignof(char), str.cap, 0);
 }
 
-string string_format(const char* fmt, ...) {
+string string_format(allocator_ref allocator, const char* fmt, ...) {
 	va_list args;
 	va_start(args, fmt);
 	const int len = vsnprintf(nullptr, 0, fmt, args);
@@ -77,30 +75,19 @@ string string_format(const char* fmt, ...) {
 	if (len < 0)
 		return EMPTY_STRING;
 
-	const usize cap = len + 1;
-	char* buf = malloc(cap);
+	string out = string_sized(len, allocator);
 
 	va_start(args, fmt);
-	vsnprintf(buf, cap, fmt, args);
+	vsnprintf(out.data, out.cap, fmt, args);
 	va_end(args);
 
-	return (string){
-		.data = buf,
-		.len = len,
-		.cap = cap,
-	};
+	return out;
 }
 
-string string_clone(const string s) {
-	const usize cap = s.len+1; // +1 to account for null terminator.
-	void* data = malloc(cap);
-	memcpy(data, s.data, cap);
-
-	return (string){
-		.data = data,
-		.len = s.len,
-		.cap = cap,
-	};
+string string_clone(const string* s, allocator_ref allocator) {
+	string cloned = string_sized(s->len, allocator);
+	memcpy(cloned.data, s->data, s->cap);
+	return cloned;
 }
 
 str string_as_slice(const string* s) {
@@ -110,20 +97,16 @@ str string_as_slice(const string* s) {
 	};
 }
 
-string read_string_from_file(FILE* file) {
+string read_string_from_file(FILE* file, allocator_ref allocator) {
 	struct stat file_stats;
 	if (fstat(fileno(file), &file_stats) != 0 || !S_ISREG(file_stats.st_mode))
 		return EMPTY_STRING;
 
-	string s;
-	s.cap = file_stats.st_size+1/*null terminator*/;
-	s.data = malloc(s.cap),
-	// Length will be determined after reading just in case the file has a null terminator.
-	// I'm not 100% sure this should be the behavior forever, but currently `string`s have to be null terminated.
+	string s = string_sized(file_stats.st_size, allocator);
 
 	fread(s.data, file_stats.st_size, 1, file);
-	s.data[file_stats.st_size] = '\0';
 
+	// Length will be determined after reading just in case the file has a null byte. Alternatively, we could replace all \0 chars with 0 or something.
 	s.len = strlen(s.data);
 
 	return s;
@@ -136,18 +119,11 @@ str str_new(const char* s) {
 	};
 }
 
-string str_allocate(const str s) {
-	char* buf = malloc(s.len + 1); // Account for null-terminator.
-	memcpy(buf, s.data, s.len);
+string str_allocate(const str s, allocator_ref allocator) {
+	string owned = string_sized(s.len, allocator);
+	memcpy(owned.data, s.data, s.len);
 
-	// Make sure null terminator is set.
-	buf[s.len] = 0;
-
-	return (string) {
-		.data = buf,
-		.len = s.len,
-		.cap = s.len + 1,
-	};
+	return owned;
 }
 
 bool str_is_cstr(const str s) {

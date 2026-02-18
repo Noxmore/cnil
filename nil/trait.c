@@ -60,14 +60,14 @@ void trait_registry_free(trait_registry* registry) {
 	}
 	trait_cache_destroy(&self->cache);
 
-	vec_free(&self->recognizers);
+	vec_free(&self->recognizers, staticalloc);
 	// We don't unlock because this registry shouldn't be used anymore!
 }
 
 void trait_registry_impl_recognizer(trait_registry* registry, const trait_recognizer recognizer) {
 	trait_registry_inner* self = (trait_registry_inner*) registry;
 	lock_registry(self);
-	vec_push(&self->recognizers, recognizer);
+	vec_push(&self->recognizers, staticalloc, recognizer);
 	unlock_registry(self);
 }
 

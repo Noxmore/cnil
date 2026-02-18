@@ -135,3 +135,14 @@
 
 #define DEFER(END) \
 	for (bool NIL_MACRO_VAR(i_) = false; !NIL_MACRO_VAR(i_); (NIL_MACRO_VAR(i_) = true), END)
+
+// Iterates through an iterator that iterates over pointers. Use like `FOREACH (thing, thing_iter(&things), thing_next) { }
+#define FOREACH(VARNAME, ITERATOR, NEXT_FN) \
+	auto NIL_MACRO_VAR(iter) = (ITERATOR); \
+	for (auto VARNAME = NEXT_FN(&NIL_MACRO_VAR(iter)); VARNAME; VARNAME = NEXT_FN(&NIL_MACRO_VAR(iter)))
+
+#ifdef NIL_INCLUDE_ANNOTATIONS
+	#define ANNOTATE(STRING) __attribute__((annotate(STRING)))
+#else
+	#define ANNOTATE(STRING)
+#endif

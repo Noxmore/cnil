@@ -1,6 +1,6 @@
 #pragma once
 
-#include "nint.h"
+#include "alloc.h"
 #include "macro_utils.h"
 
 #include <bits/types/FILE.h>
@@ -24,6 +24,7 @@ typedef struct str {
 	const char* data;
 	usize len;
 } str;
+
 // To make some syntax nicer, like returning an empty string from a function.
 constexpr str EMPTY_STR = { 0 };
 
@@ -31,29 +32,29 @@ constexpr str EMPTY_STR = { 0 };
 #define s(LITERAL) ((str){ .data = LITERAL, .len = sizeof(LITERAL)-1 })
 
 // Creates a string via a null terminated C string.
-string string_new(const char* str);
+string string_new(const char* str, allocator_ref allocator);
 // Creates a string with a specific length to be written into. Allocates +1 to account for null terminator.
 // The last byte of the allocation will be '\0', the rest is undefined, and should be overwritten.
-string string_sized(usize len);
+string string_sized(usize len, allocator_ref allocator);
 // Create a string by concatenating a bunch of `str`s together.
-string string_concat_array(usize str_count, const str strs[static str_count]);
+string string_concat_array(allocator_ref allocator, usize str_count, const str strs[static str_count]);
 // Create a string by concatenating a bunch of `str`s together. Call like a variadic function.
-#define string_concat(...) string_concat_array(NIL_COUNT_ARGS(__VA_ARGS__), (str[]){ __VA_ARGS__ })
-void string_free(string* str);
+#define string_concat(ALLOCATOR, ...) string_concat_array(ALLOCATOR, NIL_COUNT_ARGS(__VA_ARGS__), (str[]){ __VA_ARGS__ })
+void string_free(string str, allocator_ref allocator);
 /// Creates a new string with regular C formatting codes.
-string string_format(const char* fmt, ...) __attribute__((format(printf, 1, 2)));
+string string_format(allocator_ref allocator, const char* fmt, ...) __attribute__((format(printf, 2, 3)));
 // Allocates a new string with the same contents as `s`. Does not take ownership.
-string string_clone(string s);
+string string_clone(const string* s, allocator_ref allocator);
 str string_as_slice(const string* s);
 // Reads a string from a file, preallocating exactly how much data the file contains.
 // If any step of this process fails, returns an empty/null string.
-string read_string_from_file(FILE* file);
+string read_string_from_file(FILE* file, allocator_ref allocator);
 
 // Creates a string slice from a null terminated C string. Does not allocate anything.
 // Do not call this in a string literal. Use the `s` macro instead, as it does not need to call strlen.
 str str_new(const char* s);
 // Convert a string slice into an owned string.
-string str_allocate(str s);
+string str_allocate(str s, allocator_ref allocator);
 // Returns whether this string slice is null-terminated or not. Subslices probably won't be null-terminated for example.
 bool str_is_cstr(str s);
 

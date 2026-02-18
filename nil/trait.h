@@ -1,7 +1,8 @@
 #pragma once
 
-#include "reflect.h"
+#include "alloc.h"
 #include "macro_utils.h"
+#include "reflect.h"
 
 constexpr usize TRAIT_REGISTRY_PTR_WORDS = 12;
 
@@ -103,12 +104,12 @@ typedef struct type_indirection_trait {
 typedef struct primitive_conversion_trait {
 	// Write as a string directly to a file to avoid having to allocate via `to_string` if not needed.
 	void (*write_string)(const void* self, FILE* file);
-	string (*to_string)(const void* self);
+	string (*to_string)(const void* self, allocator_ref alloc);
 	double (*to_floating)(const void* self);
 	s64 (*to_integer)(const void* self);
-	bool (*from_string)(void* self, str s);
-	bool (*from_floating)(void* self, double v);
-	bool (*from_integer)(void* self, s64 v);
+	bool (*from_string)(void* self, str s, allocator_ref alloc);
+	bool (*from_floating)(void* self, double v, allocator_ref alloc);
+	bool (*from_integer)(void* self, s64 v, allocator_ref alloc);
 } primitive_conversion_trait;
 DECLARE_TRAIT(primitive_conversion_trait)
 
@@ -126,8 +127,8 @@ typedef struct list_trait {
 
 	usize (*len)(const struct list_trait* trait, const void* self);
 
-	void (*reserve)(const struct list_trait* trait, void* self, usize elements);
-	void* (*push_new)(const struct list_trait* trait, void* self);
+	void (*reserve)(const struct list_trait* trait, void* self, usize elements, allocator_ref alloc);
+	void* (*push_new)(const struct list_trait* trait, void* self, allocator_ref alloc);
 	// void (*insert)(const struct list_trait* trait, void* self, usize index, const void* element);
 	void (*remove)(const struct list_trait* trait, void* self, usize index);
 

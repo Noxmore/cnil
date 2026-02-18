@@ -2,12 +2,63 @@
 
 #include "internal/sys_alloc.h"
 #include "memory_util.h"
+#include "vec.h"
 
 #include <assert.h>
 #include <stdlib.h>
 #include <string.h>
 
-// allocator nil_global_allocator;
+#include "math.h"
+
+static void dummy_allocation_callback(void* ctx, void* ptr, usize align, usize old, usize new) {}
+nil_allocation_callback_fn nil_allocation_callback = dummy_allocation_callback;
+
+/*owned_allocator static_allocator = {};
+_Atomic(bool) initialized_static_allocator = false;
+
+void nil_set_static_allocator(owned_allocator allocator) {
+	if (initialized_static_allocator)
+		destroy_allocator(&static_allocator);
+
+	static_allocator = allocator;
+	initialized_static_allocator = true;
+}
+allocator_ref nil_get_static_allocator() {
+	if (!initialized_static_allocator)
+		static_allocator = mallocator_interface(mallocator_new());
+
+	return static_allocator.ref;
+}*/
+
+void* malloc_bridge(void* ctx, void* ptr, usize align, const usize old, const usize new) {
+	nil_allocation_callback(ctx, ptr, align, old, new);
+
+	if (ptr) {
+		if (new == 0 && old > 0) {
+			free(ptr);
+			return nullptr;
+		}
+
+		ptr = realloc(ptr, new);
+		assert(ptr != nullptr);
+		return ptr;
+	}
+
+	if (new == 0)
+		return nullptr;
+
+	return aligned_alloc(align, new);
+}
+
+const allocator_ref staticalloc = {
+	.alloc = malloc_bridge,
+};
+
+/*__attribute__((destructor))
+void destroy_static_allocator() {
+	if (initialized_static_allocator)
+		destroy_allocator(&static_allocator);
+}*/
 
 typedef struct arena_block {
 	struct arena_block* next;
@@ -39,7 +90,7 @@ static arena_block* create_arena_block() {
 static void* arena_alloc_recursive(arena_block* block, void* ptr, const usize align, const usize size) {
 	u8* from;
 	// Realloc optimization: extend the previous one.
-	if (ptr == block->last_alloc)
+	if (block->last_alloc != nullptr && ptr == block->last_alloc)
 		from = block->last_alloc;
 	else
 		from = (u8*)pad_to_align((usize)block->head, align);
@@ -58,20 +109,27 @@ static void* arena_alloc_recursive(arena_block* block, void* ptr, const usize al
 	return from;
 }
 void* arena_alloc(arena_allocator* arena, void* ptr, const usize align, const usize old, const usize new) {
+	nil_allocation_callback(arena, ptr, align, old, new);
+
 	if (new >= max_arena_allocation_size()) {
 		void* big_alloc = aligned_alloc(align, new);
 
 		if (ptr)
 			memcpy(big_alloc, ptr, old);
 
-		vec_push(&arena->big_allocations, big_alloc);
+		vec_push(&arena->big_allocations, staticalloc, big_alloc);
 		return big_alloc;
 	}
 
 	if (arena->first_block == nullptr)
 		arena->first_block = create_arena_block();
 
-	return arena_alloc_recursive(arena->first_block, ptr, align, new);
+	void* new_ptr = arena_alloc_recursive(arena->first_block, ptr, align, new);
+
+	if (ptr != nullptr && ptr != new_ptr)
+		memcpy(new_ptr, ptr, old);
+
+	return new_ptr;
 }
 
 static usize arena_allocated_bytes_recursive(const arena_block* block) {
@@ -111,7 +169,7 @@ void arena_destroy(arena_allocator* arena) {
 
 	for (usize i = 0; i < arena->big_allocations.len; i++)
 		free(arena->big_allocations.data[i]);
-	vec_free(&arena->big_allocations);
+	vec_free(&arena->big_allocations, staticalloc);
 }
 
 // Arena allocator interface. I use wrapper functions for better compile-time error checking.
@@ -124,17 +182,107 @@ static void arena_interface_reset(void* ctx) {
 	arena_reset(ctx);
 }
 
-static void arena_interface_destroy(void* ctx) {
+static void arena_owned_destroy(void* ctx) {
 	arena_destroy(ctx);
+	free(ctx);
 }
 
-allocator arena_ref(arena_allocator* arena) {
-	return (allocator){
+allocator_ref arena_ref(arena_allocator* arena) {
+	return (allocator_ref){
 		.alloc = arena_interface_alloc,
-		.reset = arena_interface_reset,
-		.destroy = arena_interface_destroy,
 		.ctx = arena,
 	};
+}
+owned_allocator arena_interface(arena_allocator arena) {
+	void* ctx = malloc(sizeof(arena_allocator));
+	memcpy(ctx, &arena, sizeof(arena_allocator));
+
+	return (owned_allocator){
+		.reset = arena_interface_reset,
+		.destroy = arena_owned_destroy,
+		.ref = arena_ref(&arena),
+	};
+}
+
+mallocator mallocator_new() {
+	return (mallocator){};
+}
+
+typedef struct mallocator_metadata {
+	usize allocation_idx;
+} mallocator_metadata;
+
+void* mallocator_alloc(mallocator* self, void* ptr, usize align, const usize old, const usize new) {
+	nil_allocation_callback(self, ptr, align, old, new);
+
+	align = max_usize(align, alignof(usize));
+	const usize meta_size = pad_to_align(sizeof(mallocator_metadata), align);
+
+	if (ptr) {
+		mallocator_metadata* meta = ptr - meta_size;
+		if (new == 0 && old > 0) {
+			vec_remove_swap_last(&self->allocations, meta->allocation_idx);
+			mallocator_metadata* moved_last_meta = self->allocations.data[meta->allocation_idx] - meta_size;
+			moved_last_meta->allocation_idx = meta->allocation_idx;
+			free(meta);
+			return nullptr;
+		}
+
+		meta = realloc(meta, new + meta_size);
+		assert(meta != nullptr);
+		self->allocations.data[meta->allocation_idx] = meta;
+		return (void*)meta + meta_size;
+	}
+
+	mallocator_metadata* meta = aligned_alloc(align, new + meta_size);
+	meta->allocation_idx = self->allocations.len;
+	vec_push(&self->allocations, staticalloc, meta);
+	return (void*)meta + meta_size;
+}
+void mallocator_reset(mallocator* self) {
+	for (usize i = 0; i < self->allocations.len; i++)
+		free(self->allocations.data[i]);
+	vec_clear(&self->allocations);
+}
+void mallocator_destroy(mallocator* self) {
+	mallocator_reset(self);
+	vec_free(&self->allocations, staticalloc);
+}
+
+
+static void* mallocator_interface_alloc(void* ctx, void* ptr, const usize align, const usize old, const usize new) {
+	return mallocator_alloc(ctx, ptr, align, old, new);
+}
+
+static void mallocator_interface_reset(void* ctx) {
+	mallocator_reset(ctx);
+}
+
+static void mallocator_owned_destroy(void* ctx) {
+	mallocator_destroy(ctx);
+	free(ctx);
+}
+
+allocator_ref mallocator_ref(mallocator* self) {
+	return (allocator_ref){
+		.alloc = mallocator_interface_alloc,
+		.ctx = self,
+	};
+}
+owned_allocator mallocator_interface(mallocator self) {
+	void* ctx = malloc(sizeof(mallocator));
+	memcpy(ctx, &self, sizeof(mallocator));
+
+	return (owned_allocator){
+		.reset = mallocator_interface_reset,
+		.destroy = mallocator_owned_destroy,
+		.ref = mallocator_ref(&self),
+	};
+}
+
+void* suballocator_alloc(mallocator* self, void* ptr, usize align, usize old, usize new) {
+	nil_allocation_callback(self, ptr, align, old, new);
+
 }
 
 // TODO: If I uncomment this, fix hashset iterators to use a for loop to avoid UB.

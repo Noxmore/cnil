@@ -23,13 +23,13 @@ typedef struct type_info_builder {
 
 	vec_anon(struct type_info_builder) sub_types;
 } type_info_builder;
-void type_info_builder_free(type_info_builder* builder);
+// void type_info_builder_free(type_info_builder* builder);
 
 typedef struct variant_builder {
 	string name;
 	vec(string) annotations;
 } variant_builder;
-void variant_builder_free(variant_builder* builder);
+// void variant_builder_free(variant_builder* builder);
 
 typedef struct field_builder {
 	string name;
@@ -41,13 +41,13 @@ typedef struct field_builder {
 	u32 pointer_layers;
 	bool is_const;
 } field_builder;
-void field_builder_free(field_builder* builder);
+// void field_builder_free(field_builder* builder);
 
 typedef struct reflect_ctx {
 	vec(type_info_builder) types;
 	const char* canonical_file_path;
 	bool had_error;
 } reflect_ctx;
-void reflect_ctx_free(reflect_ctx* ctx);
+// void reflect_ctx_free(reflect_ctx* ctx);
 
 // u64 type_hash(const type_info_builder* type);

@@ -1,5 +1,7 @@
 #include "parse.h"
 
+#include "allocator.h"
+
 #include <clang-c/Index.h>
 #include <limits.h>
 #include <stdio.h>
@@ -7,7 +9,7 @@
 #include <string.h>
 
 #include "nil/ansi_colors.h"
-#include "nil/format.h"
+// #include "nil/format.h"
 #include "nil/panic.h"
 #include "nil/string.h"
 
@@ -43,7 +45,7 @@ static const char* get_type_prefix(const enum type_info_kind kind) {
 }
 
 static string format_namespaced_type_referral(const type_info_builder* builder) {
-	return string_format("%s %s", get_type_prefix(builder->kind), builder->name.data);
+	return string_format(alloc, "%s %s", get_type_prefix(builder->kind), builder->name.data);
 }
 
 /*static bool parse_ctx_contains_type(const reflect_ctx* ctx, CXCursor cursor) {
@@ -58,7 +60,7 @@ static string format_namespaced_type_referral(const type_info_builder* builder) 
 
 // Takes ownership of `s`, disposing it in the process.
 static string convert_str(CXString s) {
-	const string out = string_new(clang_getCString(s));
+	const string out = string_new(clang_getCString(s), alloc);
 	clang_disposeString(s);
 	return out;
 }
@@ -73,7 +75,7 @@ static string cursor_spelling(const CXCursor cursor) {
 
 static enum CXChildVisitResult push_annotations(CXCursor cursor, CXCursor parent, CXClientData client_data) {
 	if (clang_getCursorKind(cursor) == CXCursor_AnnotateAttr) {
-		vec_push((vec(string)*)client_data, cursor_display_name(cursor));
+		vec_push((vec(string)*)client_data, alloc, cursor_display_name(cursor));
 	}
 
 	return CXChildVisit_Continue;
@@ -122,7 +124,7 @@ static enum CXChildVisitResult reflect_type(CXCursor cursor, CXCursor parent, CX
 
 		clang_disposeString(display_name);
 
-		vec_push(&type->annotations, cursor_display_name(cursor));
+		vec_push(&type->annotations, alloc, cursor_display_name(cursor));
 	} else if (kind == CXCursor_FieldDecl) {
 		if (should_ignore_field(cursor))
 			return CXChildVisit_Continue;
@@ -140,7 +142,7 @@ static enum CXChildVisitResult reflect_type(CXCursor cursor, CXCursor parent, CX
 					field_type = clang_getPointeeType(field_type);
 					break;
 				case CXType_ConstantArray:
-					vec_push(&field.const_array_layers, clang_getArraySize(field_type));
+					vec_push(&field.const_array_layers, alloc, clang_getArraySize(field_type));
 					field_type = clang_getArrayElementType(field_type);
 					break;
 				default: UNREACHABLE;
@@ -159,14 +161,14 @@ static enum CXChildVisitResult reflect_type(CXCursor cursor, CXCursor parent, CX
 		}
 
 		if (is_anonymous(cursor)) {
-			type_info_builder* sub_type = malloc(sizeof(type_info_builder));
+			type_info_builder* sub_type = nil_new(alloc, type_info_builder);
 			memset(sub_type, 0, sizeof(type_info_builder));
 
 			const CXCursor field_type_cursor = clang_getTypeDeclaration(field_type);
 
 			sub_type->kind = clang_getCursorKind(field_type_cursor) == CXCursor_EnumDecl ? type_info_enum : type_info_struct;
-			sub_type->name = string_format("%s::%s", type->name.data, field.name.data);
-			sub_type->type_referral = string_format("typeof((%s){}.%s)", type->type_referral.data, field.name.data);
+			sub_type->name = string_format(alloc, "%s::%s", type->name.data, field.name.data);
+			sub_type->type_referral = string_format(alloc, "typeof((%s){}.%s)", type->type_referral.data, field.name.data);
 			sub_type->anonymous = true;
 			clang_visitChildren(field_type_cursor, reflect_type, sub_type);
 
@@ -179,7 +181,7 @@ static enum CXChildVisitResult reflect_type(CXCursor cursor, CXCursor parent, CX
 			}
 		}
 
-		vec_push(&type->struct_fields, field);
+		vec_push(&type->struct_fields, alloc, field);
 	} else if (kind == CXCursor_EnumConstantDecl) {
 		if (should_ignore_field(cursor))
 			return CXChildVisit_Continue;
@@ -187,7 +189,7 @@ static enum CXChildVisitResult reflect_type(CXCursor cursor, CXCursor parent, CX
 		variant_builder variant = {0};
 		variant.name = cursor_display_name(cursor);
 		clang_visitChildren(cursor, push_annotations, &variant.annotations);
-		vec_push(&type->enum_variants, variant);
+		vec_push(&type->enum_variants, alloc, variant);
 	} else if (kind == CXCursor_StructDecl || kind == CXCursor_EnumDecl || kind == CXCursor_UnionDecl) {
 		if (is_anonymous(cursor)) {
 			// TODO: inline declarations
@@ -202,7 +204,7 @@ static enum CXChildVisitResult reflect_type(CXCursor cursor, CXCursor parent, CX
 
 		clang_visitChildren(cursor, reflect_type, &sub_type);
 
-		vec_push(&type->sub_types, sub_type);
+		vec_push(&type->sub_types, alloc, sub_type);
 	}
 
 	return CXChildVisit_Continue;
@@ -291,7 +293,8 @@ static enum CXChildVisitResult search_for_reflected_types(CXCursor cursor, CXCur
 
 			const CXString typedef_spelling = clang_getTypeSpelling(clang_getTypedefDeclUnderlyingType(cursor));
 			if (strcmp(clang_getCString(typedef_spelling), builder.name.data) == 0) {
-				builder.type_referral = string_clone(builder.name);
+				// builder.type_referral = string_clone(&builder.name, alloc);
+				builder.type_referral = builder.name;
 			} else {
 				// const str prefix = get_type_prefix(builder.kind);
 				/*const usize buf_size = prefix.len + builder.name.len + 1; // Account for null terminator. Space is built into the prefix.
@@ -306,7 +309,7 @@ static enum CXChildVisitResult search_for_reflected_types(CXCursor cursor, CXCur
 
 			clang_visitChildren(type_cursor, reflect_type, &builder);
 
-			vec_push(&ctx->types, builder);
+			vec_push(&ctx->types, alloc, builder);
 		}
 
 		return CXChildVisit_Continue;

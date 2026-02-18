@@ -180,11 +180,6 @@ void nil_register_default_types(type_registry* reg);
 #define NIL_ANNOTATION_DOC_PREFIX "doc"
 // #define NIL_ANNOTATION_ARRAY_PREFIX "reflect_array"
 
-#ifdef NIL_INCLUDE_ANNOTATIONS
-	#define ANNOTATE(STRING) __attribute__((annotate(STRING)))
-#else
-	#define ANNOTATE(STRING)
-#endif
 #define REFLECT_IGNORE ANNOTATE(NIL_ANNOTATION_REFLECT_IGNORE)
 // #define REFLECT_FREE(FN) ANNOTATE(NIL_ANNOTATION_REFLECT_FREE_PREFIX "=" #FN)
 #define REFLECT_DOC(DOC) ANNOTATE(NIL_ANNOTATION_DOC_PREFIX "=" DOC)

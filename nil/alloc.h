@@ -1,39 +1,65 @@
-// WIP custom allocator API. Not ready for use.
-
 #pragma once
 
 #include "nint.h"
-#include "vec.h"
-// #include "macro_utils.h"
+#include "internal/vec_types.h"
 
-
-
+// `malloc`, `realloc`, and `free` all combined into one function.
+// When `new` is 0, should return `nullptr`. Otherwise, should always produce valid pointer. Failed allocations should crash. TODO: Do we want this behavior?
 typedef void* (*nil_alloc_fn)(void* ctx, void* ptr, usize align, usize old, usize new);
+typedef void (*nil_allocation_callback_fn)(void* ctx, void* ptr, usize align, usize old, usize new);
 
-/*typedef struct allocator_ref {
+// Acts like a fat pointer
+typedef struct allocator_ref {
 	nil_alloc_fn alloc;
 	void* ctx;
-} allocator_ref;*/
+} allocator_ref;
 
-typedef struct allocator {
-	// Expose a .ref syntax while still having the function just one '.' away.
-	/*union {
-		allocator_ref ref;
-
-		struct {
-			nil_alloc_fn alloc;
-			void* ctx;
-		};
-	};*/
-	nil_alloc_fn alloc;
+typedef struct owned_allocator {
+	allocator_ref ref;
 	void (*reset)(void* ctx);
 	void (*destroy)(void* ctx);
-	void* ctx;
-} allocator;
+} owned_allocator;
 
-typedef const allocator* allocator_ref;
+static inline void reset_allocator(owned_allocator* allocator) {
+	allocator->reset(allocator->ref.ctx);
+}
 
-// extern allocator nil_global_allocator;
+static inline void destroy_allocator(owned_allocator* allocator) {
+	allocator->destroy(allocator->ref.ctx);
+}
+
+// Should never be `nullptr`.
+extern nil_allocation_callback_fn nil_allocation_callback;
+
+// A raw allocator for malloc. You usually shouldn't use this.
+extern const allocator_ref staticalloc;
+
+/*// Warning: Destroys the current static allocator, make sure you only do this in places you know nothing is allocated.
+void nil_set_static_allocator(owned_allocator allocator);
+allocator_ref nil_get_static_allocator();
+
+// Retrieves a raw allocator for malloc. This doesn't record allocations. You should use `staticalloc` over this unless you know what you're doing.
+allocator_ref nil_get_malloc_allocator();
+
+#define staticalloc nil_get_static_allocator()*/
+
+
+// #define defalloc nil_default_static_allocator.ref
+
+// Used for macros to not duplicate allocator reference expressions.
+static inline void* nil_alloc(allocator_ref allocator, void* ptr, const usize align, const usize old, const usize new) {
+	return allocator.alloc(allocator.ctx, ptr, align, old, new);
+}
+#define nil_new(ALLOC, T) nil_alloc(ALLOC, nullptr, alignof(T), 0, sizeof(T))
+#define nil_new_array(ALLOC, T, COUNT) nil_alloc(ALLOC, nullptr, alignof(T), 0, sizeof(T) * (COUNT))
+#define nil_free(ALLOC, T, PTR) nil_alloc(ALLOC, PTR, alignof(T), sizeof(T), 0)
+#define nil_free_array(ALLOC, T, PTR, COUNT) nil_alloc(ALLOC, PTR, alignof(T), sizeof(T) * (COUNT), 0)
+
+// typedef const allocator* allocator_ref;
+
+// ============================================================================================================================== //
+//                                                              ARENA                                                             //
+// ============================================================================================================================== //
 
 // Arena allocator that directly uses OS pages, removing malloc overhead.
 typedef struct arena_allocator {
@@ -48,63 +74,40 @@ usize arena_allocated_bytes(const arena_allocator* arena);
 void arena_reset(arena_allocator* arena);
 void arena_destroy(arena_allocator* arena);
 
-allocator arena_ref(arena_allocator* arena);
-
-/*#ifndef NIL_ALLOCATOR_PREFIX
-#define NIL_ALLOCATOR_PREFIX
-#endif
-
-#define NIL_ALLOCATOR_API(NAME) NIL_CONCAT_2(NIL_ALLOCATOR_PREFIX, NAME)*/
-
-/*typedef void* (*nil_alloc_fn)(void* ctx, void* ptr, usize old, usize new);
-// typedef void* (*nil_alloc_fn)(void* ctx, void* ptr, usize size);
-
-#define alloc_create(ALLOCATOR, T) do { nil_allocator _allocator = (ALLOCATOR); _allocator.alloc(_allocator.ctx, nullptr, 0, sizeof(T)) } while (false)
-#define alloc_destroy(ALLOCATOR, PTR) do { nil_allocator _allocator = (ALLOCATOR); _allocator.alloc(_allocator.ctx, (PTR), sizeof(*(PTR)), 0) } while (false)
-
-typedef struct nil_allocator {
-	nil_alloc_fn alloc;
-	void* ctx;
-} nil_allocator;
-
-//////////////////////////////////////////////////////////////////////////////////
-//// ARENA
-//////////////////////////////////////////////////////////////////////////////////
+allocator_ref arena_ref(arena_allocator* arena);
+owned_allocator arena_interface(arena_allocator arena);
 
 
+// ============================================================================================================================== //
+//                                                           MALLOCATOR                                                           //
+// ============================================================================================================================== //
 
-//////////////////////////////////////////////////////////////////////////////////
-//// GLOBAL
-//////////////////////////////////////////////////////////////////////////////////
+// Tracked malloc.
+typedef struct mallocator {
+	// This should not be considered public API.
+	vec_anon(void*) allocations;
+} mallocator;
+mallocator mallocator_new();
+void* mallocator_alloc(mallocator* self, void* ptr, usize align, usize old, usize new);
+void mallocator_reset(mallocator* self);
+void mallocator_destroy(mallocator* self);
 
-typedef struct global_allocator {
-	nil_allocator interface;
-} global_allocator;
+allocator_ref mallocator_ref(mallocator* self);
+owned_allocator mallocator_interface(mallocator self);
 
-global_allocator create_global_allocator();
-void* galloc(global_allocator* allocator, void* ptr, usize old, usize new);
-void galloc_reset(global_allocator* allocator);
-void galloc_destroy(global_allocator allocator);*/
+// ============================================================================================================================== //
+//                                                            LIFETIME                                                            //
+// ============================================================================================================================== //
 
-/*typedef struct block_allocator {
+// Tracks allocations to form a sub-lifetime, allowing you to free them all at once if things go awry.
+// Freeing is currently an O(n) operation.
+typedef struct suballocator {
+	allocator_ref super;
+	vec_anon(void*) allocations;
+} suballocator;
+void* suballocator_alloc(mallocator* self, void* ptr, usize align, usize old, usize new);
+void suballocator_reset(mallocator* self);
+// Releases the allocations back to the backing allocator.
+void suballocator_release(mallocator* self);
 
-} block_allocator;*/
-
-// static inline void nil_free(nil_allocator)
-
-// typedef struct nil_lifetime nil_lifetime;
-
-/*// Object that keeps track of allocations, allowing bulk frees.
-typedef struct nil_lifetime {
-	// THE FORBIDDEN ENCAPSULATION TECHNIQUE
-	// usize private[6]; // Private stack-allocated data.
-
-	// Internally, a lifetime shares the structure of a vector.
-	void** data;
-	usize len;
-	usize cap;
-} nil_lifetime;
-typedef void (*nil_destructor)(void*);
-void* nil_alloc(nil_lifetime* lifetime, void* current, usize size, usize count, nil_destructor destructor);
-void nil_free(nil_lifetime* lifetime, void* ptr);
-void nil_release(nil_lifetime* lifetime);*/
+allocator_ref suballocator_ref(mallocator* self);

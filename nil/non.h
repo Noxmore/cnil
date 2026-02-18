@@ -134,8 +134,9 @@ void non_print_error(FILE* file, non_result result, str source);
 // typedef void (*non_error_visitor)(non_parse_error err, void* client_data);
 // typedef nil_tree_visitor_step (*non_node_visitor)(non_cursor cursor, void* client_data);
 
-non_result non_parse(string s, non_tree* tree);
-void non_free(non_tree tree);
+// The destination tree will have the same lifetime as `s`.
+non_result non_parse(str s, non_tree* dst, allocator_ref allocator);
+// void non_free(non_tree tree);
 // void non_parse(FILE* file, non_node_visitor visitor, void* client_data, non_error_visitor error_visitor, void* error_visitor_data);
 
-non_result non_read_into_reflected(FILE* file, const type_info* type, void* data);
+non_result non_read_into_reflected(FILE* file, const type_info* type, void* data, allocator_ref allocator);

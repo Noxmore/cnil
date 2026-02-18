@@ -135,15 +135,15 @@ static non_result finish_token(vec(token)* tokens, const char* token_start, cons
 		const double value = strtod(buf, &end);
 		if (end == buf)
 			return non_error(non_invalid_number, loc);
-		vec_push(tokens, (token){ .type = token_number, .loc = loc, .num = value });
+		vec_push(tokens, staticalloc, (token){ .type = token_number, .loc = loc, .num = value });
 	} else {
-		vec_push(tokens, (token){ .type = token_string, .loc = loc, .str = s });
+		vec_push(tokens, staticalloc, (token){ .type = token_string, .loc = loc, .str = s });
 	}
 
 	return non_ok;
 }
 
-static non_result non_tokenize(const string s, vec(token)* tokens) {
+static non_result non_tokenize(const str s, vec(token)* tokens) {
 	const char* token_start = s.data;
 	const char* end = s.data + s.len + 1;
 
@@ -182,7 +182,7 @@ static non_result non_tokenize(const string s, vec(token)* tokens) {
 			non_try(finish_token(tokens, token_start, cursor, loc));
 			token_start = cursor + 1;
 			while (++cursor < end && *cursor != '"') {}
-			vec_push(tokens, (token){ .type = token_string, .loc = loc, .str = (str){ .data = token_start, .len = cursor - token_start } });
+			vec_push(tokens, staticalloc, (token){ .type = token_string, .loc = loc, .str = (str){ .data = token_start, .len = cursor - token_start } });
 			// cursor++; // Skip trailing quote
 			token_start = cursor+1;
 			continue;
@@ -225,7 +225,7 @@ static non_result non_tokenize(const string s, vec(token)* tokens) {
 				cursor += 2;
 			}
 
-			vec_push(tokens, (token){ .type = token_char, .loc = loc, .chr = chr });
+			vec_push(tokens, staticalloc, (token){ .type = token_char, .loc = loc, .chr = chr });
 
 			token_start = cursor;
 			continue;
@@ -240,13 +240,13 @@ static non_result non_tokenize(const string s, vec(token)* tokens) {
 		// Maps.
 		if (*cursor == '{') {
 			non_try(finish_token(tokens, token_start, cursor, loc));
-			vec_push(tokens, (token){ .type = token_brace_left, .loc = loc });
+			vec_push(tokens, staticalloc, (token){ .type = token_brace_left, .loc = loc });
 			token_start = cursor + 1;
 			continue;
 		}
 		if (*cursor == '}') {
 			non_try(finish_token(tokens, token_start, cursor, loc));
-			vec_push(tokens, (token){ .type = token_brace_right, .loc = loc });
+			vec_push(tokens, staticalloc, (token){ .type = token_brace_right, .loc = loc });
 			token_start = cursor + 1;
 			continue;
 		}
@@ -254,13 +254,13 @@ static non_result non_tokenize(const string s, vec(token)* tokens) {
 		// Arrays.
 		if (*cursor == '[') {
 			non_try(finish_token(tokens, token_start, cursor, loc));
-			vec_push(tokens, (token){ .type = token_bracket_left, .loc = loc });
+			vec_push(tokens, staticalloc, (token){ .type = token_bracket_left, .loc = loc });
 			token_start = cursor + 1;
 			continue;
 		}
 		if (*cursor == ']') {
 			non_try(finish_token(tokens, token_start, cursor, loc));
-			vec_push(tokens, (token){ .type = token_bracket_right, .loc = loc });
+			vec_push(tokens, staticalloc, (token){ .type = token_bracket_right, .loc = loc });
 			token_start = cursor + 1;
 			continue;
 		}
@@ -454,12 +454,11 @@ static non_node_kind node_kind_from_token(enum token_type token_type) {
 	UNREACHABLE;
 }
 
-non_result non_parse(string s, non_tree* tree) {
+non_result non_parse(const str s, non_tree* dst, allocator_ref allocator) {
 	vec(token) tokens = {};
 
 	const non_result tokenize_result = non_tokenize(s, &tokens);
 	if (!tokenize_result.ok) {
-		string_free(&s);
 		return tokenize_result;
 	}
 
@@ -494,8 +493,7 @@ non_result non_parse(string s, non_tree* tree) {
 	}
 
 	if (current_depth > 0) {
-		string_free(&s);
-		vec_free(&tokens);
+		vec_free(&tokens, staticalloc);
 		return non_error(non_unclosed_opener, s.len);
 	}
 
@@ -505,7 +503,7 @@ non_result non_parse(string s, non_tree* tree) {
 		.nodes_head = 1,
 	};*/
 
-	non_node* nodes = malloc(sizeof(non_node) * node_count);
+	non_node* nodes = nil_new_array(allocator, non_node, node_count);
 	nodes[0] = (non_node){
 		.kind = non_map,
 		.next_sibling = NON_VACANT,
@@ -544,8 +542,7 @@ non_result non_parse(string s, non_tree* tree) {
 
 			case token_brace_right: case token_bracket_right:
 				if (node_path[path_last]->kind != node_kind_from_token(tokens.data[i].type)) {
-					string_free(&s);
-					vec_free(&tokens);
+					vec_free(&tokens, staticalloc);
 					free(nodes);
 					return non_error(non_unexpected_closer, loc);
 				}
@@ -609,20 +606,20 @@ non_result non_parse(string s, non_tree* tree) {
 		return parse_result;
 	}*/
 
-	*tree = (non_tree){
+	*dst = (non_tree){
 		.nodes = nodes,
 		.node_count = node_count,
 		.contents = s.data,
 	};
 
-	vec_free(&tokens);
+	vec_free(&tokens, staticalloc);
 	return non_ok;
 }
 
-void non_free(const non_tree tree) {
+/*void non_free(const non_tree tree) {
 	free(tree.nodes);
 	free(tree.contents);
-}
+}*/
 
 /*void non_parse(FILE* file, non_node_visitor visitor, void* client_data, non_error_visitor error_visitor, void* error_visitor_client_data) {
 	string buf = {0};
@@ -636,20 +633,20 @@ void non_free(const non_tree tree) {
 	string_free(&buf);
 }*/
 
-static non_result non_read_into_reflected_recursive(const non_tree* tree, const non_node* node, const type_info* type, void* data) {
+static non_result non_read_into_reflected_recursive(const non_tree* tree, const non_node* node, const type_info* type, void* data, allocator_ref allocator) {
 	// Try direct conversions first.
 	const auto conversions = trait_get(primitive_conversion_trait, type);
 	if (conversions) switch (node->kind) {
 		case non_string:
-			if (conversions->from_string && conversions->from_string(data, node->str))
+			if (conversions->from_string && conversions->from_string(data, node->str, allocator))
 				return non_ok;
 			break;
 		case non_char:
-			if (conversions->from_integer && conversions->from_integer(data, (s64)node->chr))
+			if (conversions->from_integer && conversions->from_integer(data, (s64)node->chr, allocator))
 				return non_ok;
 			break;
 		case non_number:
-			if (conversions->from_floating && conversions->from_floating(data, node->num))
+			if (conversions->from_floating && conversions->from_floating(data, node->num, allocator))
 				return non_ok;
 			break;
 		default:
@@ -665,13 +662,13 @@ static non_result non_read_into_reflected_recursive(const non_tree* tree, const 
 			return non_error(non_target_type_not_defaulted, node->loc);
 
 		defaulter->set_default(data);
-		list->reserve(list, data, node->child_count);
+		list->reserve(list, data, node->child_count, allocator);
 
 		for (u32 child_idx = node->first_child; child_idx != NON_VACANT; child_idx = tree->nodes[child_idx].next_sibling) {
 			const non_node* child = &tree->nodes[child_idx];
 
-			void* element_data = list->push_new(list, data);
-			non_read_into_reflected_recursive(tree, child, list->element_type, element_data);
+			void* element_data = list->push_new(list, data, allocator);
+			non_read_into_reflected_recursive(tree, child, list->element_type, element_data, allocator);
 		}
 	}
 
@@ -695,7 +692,7 @@ static non_result non_read_into_reflected_recursive(const non_tree* tree, const 
 					if (field_ptr == nullptr)
 						return non_error(non_unable_to_allocate_field, child->loc);
 
-					non_try(non_read_into_reflected_recursive(tree, &tree->nodes[child->first_child], field->type, field_ptr));
+					non_try(non_read_into_reflected_recursive(tree, &tree->nodes[child->first_child], field->type, field_ptr, allocator));
 
 					break;
 				}
@@ -728,14 +725,16 @@ static non_result non_read_into_reflected_recursive(const non_tree* tree, const 
 	return non_ok;
 }
 
-non_result non_read_into_reflected(FILE* file, const type_info* type, void* data) {
-	const string s = read_string_from_file(file);
+non_result non_read_into_reflected(FILE* file, const type_info* type, void* data, allocator_ref allocator) {
+	arena_allocator arena = arena_new();
+
+	const string s = read_string_from_file(file, arena_ref(&arena));
 	if (s.data == nullptr) {
 		return non_error(non_failed_to_read_file, 0);
 	}
 
 	non_tree tree;
-	const non_result parse_res = non_parse(s, &tree);
+	const non_result parse_res = non_parse(string_as_slice(&s), &tree, arena_ref(&arena));
 	if (!parse_res.ok) {
 		// This is kinda dumb
 		non_print_error(stderr, parse_res, string_as_slice(&s));
@@ -743,14 +742,14 @@ non_result non_read_into_reflected(FILE* file, const type_info* type, void* data
 	}
 	// non_tree_debug(&tree);
 
-	const non_result read_res = non_read_into_reflected_recursive(&tree, &tree.nodes[0], type, data);
+	const non_result read_res = non_read_into_reflected_recursive(&tree, &tree.nodes[0], type, data, allocator);
 	if (!read_res.ok) {
 		non_print_error(stderr, read_res, string_as_slice(&s));
 		// TODO: memory can very easily leak from this, this is where an allocator would be very useful.
 		return read_res;
 	}
 
-	non_free(tree);
+	arena_destroy(&arena);
 
 	return non_ok;
 }

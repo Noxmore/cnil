@@ -2,6 +2,14 @@
 
 #include "nint.h"
 
+static inline bool is_unsigned_power_of_two(u64 x) {
+	return x != 0 && (x & (x - 1)) == 0;
+}
+
+static inline bool is_signed_power_of_two(s64 x) {
+	return (x > 0) & ((x & (x - 1)) == 0);
+}
+
 #define NIL_BASIC_NUM_FNS(T) \
 	static inline T min_##T(T a, T b) { return a < b ? a : b; } \
 	static inline T max_##T(T a, T b) { return a > b ? a : b; } \

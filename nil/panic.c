@@ -19,7 +19,7 @@ void $_nil_panic(const char* fn, const char* at, const char* fmt, ...) {
 	if (msg_len < 0) {
 		message = EMPTY_STRING;
 	} else {
-		message = string_sized(msg_len);
+		message = string_sized(msg_len, staticalloc);
 
 		va_start(args, fmt);
 		vsnprintf(message.data, message.cap, fmt, args);
@@ -38,7 +38,7 @@ void $_nil_panic(const char* fn, const char* at, const char* fmt, ...) {
 		});
 	}
 
-	string_free(&message);
+	string_free(message, staticalloc);
 
 	abort();
 }
