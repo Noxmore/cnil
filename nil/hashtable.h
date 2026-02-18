@@ -4,6 +4,9 @@
 #include "alloc.h"
 #include "type_layout.h"
 
+// TODO: This could be another file.
+#include "string.h"
+
 #define NIL_HASHTABLE_GROUP_SIZE 16
 
 typedef struct nil_hashtable_policy {
@@ -15,6 +18,12 @@ typedef struct nil_hashtable_policy {
 
 // Default hashtable policy for plain-old-data.
 extern const nil_hashtable_policy nil_pod_hashtable_policy;
+
+// Doesn't hash keys, passes the bytes right through.
+extern const nil_hashtable_policy nil_passthrough_hashtable_policy;
+
+extern const nil_hashtable_policy nil_str_hashtable_policy;
+extern const nil_hashtable_policy nil_string_hashtable_policy;
 
 // ============================================================================================================================== //
 //                                                              SHARED                                                            //

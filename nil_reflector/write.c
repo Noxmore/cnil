@@ -1,10 +1,11 @@
 #include "write.h"
 
-#include "nil/internal/cwisstable_extensions.h"
+#include "nil/hashtable.h"
 
 #include <stdio.h>
 #include <string.h>
 
+#include "allocator.h"
 #include "nil/hash.h"
 
 static void indent(FILE* file, const u32 depth) {
@@ -147,15 +148,15 @@ static void write_parsed_type(FILE* file, const type_info_builder* type, const u
 	generic_hash_set
 } write_ctx;*/
 
-static void write_type_and_subtype_definitions(FILE* file, const type_info_builder* type, generic_hash_set* written_type_names) {
+static void write_type_and_subtype_definitions(FILE* file, const type_info_builder* type, hashset(u64)* written_type_names) {
 	for (usize i = 0; i < type->sub_types.len; i++) {
-		usize hash = nil_hash(type->name.data, type->name.len);
-		if (generic_hash_set_contains(written_type_names, &hash))
+		u64 hash = nil_hash(type->name.data, type->name.len);
+		if (hashset_contains(written_type_names, &hash))
 			continue;
 
 		fprintf(file, "static ");
 		write_type_and_subtype_definitions(file, &type->sub_types.data[i], written_type_names);
-		generic_hash_set_insert(written_type_names, &hash);
+		hashset_insert(written_type_names, alloc, hash);
 	}
 
 	fprintf(file, "DEFINE_TYPE_INFO(%s, \n", type->name.data);
@@ -172,7 +173,8 @@ void write_parsed_types(FILE* file, const reflect_ctx* ctx, const char* header_f
 	fprintf(file, "#include \"nil/reflect.h\"\n");
 	fprintf(file, "#include \"%s\"\n\n", header_file);
 
-	generic_hash_set written_type_names = generic_hash_set_new(8);
+	hashset(u64) written_type_names = {};
+	written_type_names.policy = &nil_passthrough_hashtable_policy;
 
 	for (usize type_idx = 0; type_idx < ctx->types.len; type_idx++) {
 		const type_info_builder* type = &ctx->types.data[type_idx];

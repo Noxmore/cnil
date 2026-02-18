@@ -4,7 +4,7 @@
 #include "macro_utils.h"
 #include "reflect.h"
 
-constexpr usize TRAIT_REGISTRY_PTR_WORDS = 12;
+constexpr usize TRAIT_REGISTRY_PTR_WORDS = 16;
 
 // Currently doesn't support multithreading. If you try, you will get weird results or crash!
 typedef struct trait_registry {

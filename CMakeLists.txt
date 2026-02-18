@@ -4,8 +4,6 @@ project(cnil C)
 set(CMAKE_C_STANDARD 23)
 set(CMAKE_EXPORT_COMPILE_COMMANDS)
 
-option(NIL_TESTS, "Nil Tests")
-
 #include(FetchContent)
 #set(FETCHCONTENT_QUIET FALSE)
 #FetchContent_Declare(
@@ -86,7 +84,7 @@ function(reflect_types target)
 #	target_link_options(${target} PRIVATE "-Wl,--whole-archive")
 endfunction()
 
-if(${NIL_TESTS})
+if(${PROJECT_IS_TOP_LEVEL})
 	include(FetchContent)
 	set(FETCHCONTENT_QUIET FALSE)
 	FetchContent_Declare(
@@ -110,6 +108,10 @@ if(${NIL_TESTS})
 
 	enable_testing()
 	add_test(NAME nil_tests COMMAND nil_tests)
+
+	file(GLOB BENCHMARK_SRC_FILES CONFIGURE_DEPENDS nil_benchmark/*.c)
+	add_executable(nil_benchmark ${BENCHMARK_SRC_FILES})
+	target_link_libraries(nil_benchmark PRIVATE nil)
 endif()
 
 #	add_library(${reflected_target} OBJECT ${generated_sources})

@@ -3,17 +3,18 @@
 #include "trait.h"
 #include "ansi_colors.h"
 #include "vec.h"
-#include "internal/cwisstable.h"
+#include "hashtable.h"
 
 #include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 #include "panic.h"
 
 void nil_integer_to_bytes(s64 value, u8* out, usize n) {
 	while (n--) {
-		out[n] = (uint8_t)value;
+		out[n] = (u8)value;
 		value >>= 8;
 	}
 }
@@ -197,23 +198,16 @@ bool is_reflected_cloneable(const type_info* type) {
 }
 
 
-CWISS_DECLARE_FLAT_HASHMAP(registry_index_map, const type_info*, usize);
-
 typedef struct type_registry {
 	vec_anon(const type_info*) linear;
-	registry_index_map index_map;
+	hashmap_anon(const type_info*, usize) index_map;
 } type_registry;
 
 type_registry* type_registry_new() {
-	return type_registry_new_with(32); // Semi-random number. Doesn't matter that much.
-}
-
-type_registry* type_registry_new_with(const usize reserve) {
 	type_registry* reg = malloc(sizeof(type_registry));
 	memset(reg, 0, sizeof(type_registry));
 
-	vec_reserve(&reg->linear, staticalloc, reserve);
-	reg->index_map = registry_index_map_new(reserve);
+	vec_reserve(&reg->linear, staticalloc, 32); // Semi-random number. Doesn't matter that much.
 
 	return reg;
 }
@@ -222,19 +216,21 @@ void type_register(type_registry* reg, const type_info* type) {
 	if (type_registry_contains(reg, type))
 		panic("Type registry already contains %s", type->name.data);
 
-	registry_index_map_insert(&reg->index_map, &(registry_index_map_Entry){ .key = type, .val = reg->linear.len });
+	hashmap_insert(&reg->index_map, staticalloc, type, reg->linear.len);
 	vec_push(&reg->linear, staticalloc, type);
 }
 usize type_registry_size(const type_registry* reg) {
 	return reg->linear.len;
 }
 const usize* type_registry_index(type_registry* reg, const type_info* type) {
-	const auto iter = registry_index_map_find(&reg->index_map, &type);
+	/*const auto iter = registry_index_map_find(&reg->index_map, &type);
 	const auto entry = registry_index_map_Iter_get(&iter);
-	return entry == nullptr ? nullptr : &entry->val;
+	return entry == nullptr ? nullptr : &entry->val;*/
+	return hashmap_get(&reg->index_map, &type);
 }
 bool type_registry_contains(const type_registry* reg, const type_info* type) {
-	return registry_index_map_contains(&reg->index_map, &type);
+	// return registry_index_map_contains(&reg->index_map, &type);
+	return hashmap_contains(&reg->index_map, &type);
 }
 const type_info* type_registry_get(const type_registry* reg, const usize index) {
 	if (index >= reg->linear.len)
@@ -244,7 +240,7 @@ const type_info* type_registry_get(const type_registry* reg, const usize index) 
 
 void type_registry_free(type_registry* reg) {
 	vec_free(&reg->linear, staticalloc);
-	registry_index_map_destroy(&reg->index_map);
+	hashmap_free(&reg->index_map, staticalloc);
 	free(reg);
 }
 

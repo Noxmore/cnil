@@ -28,23 +28,12 @@ static inline void destroy_allocator(owned_allocator* allocator) {
 	allocator->destroy(allocator->ref.ctx);
 }
 
-// Should never be `nullptr`.
+// Global callback to run whenever memory is allocated. Should never be `nullptr`.
+// This is a dummy function by default, feel free to attach your own.
 extern nil_allocation_callback_fn nil_allocation_callback;
 
 // A raw allocator for malloc. You usually shouldn't use this.
 extern const allocator_ref staticalloc;
-
-/*// Warning: Destroys the current static allocator, make sure you only do this in places you know nothing is allocated.
-void nil_set_static_allocator(owned_allocator allocator);
-allocator_ref nil_get_static_allocator();
-
-// Retrieves a raw allocator for malloc. This doesn't record allocations. You should use `staticalloc` over this unless you know what you're doing.
-allocator_ref nil_get_malloc_allocator();
-
-#define staticalloc nil_get_static_allocator()*/
-
-
-// #define defalloc nil_default_static_allocator.ref
 
 // Used for macros to not duplicate allocator reference expressions.
 static inline void* nil_alloc(allocator_ref allocator, void* ptr, const usize align, const usize old, const usize new) {
@@ -54,8 +43,6 @@ static inline void* nil_alloc(allocator_ref allocator, void* ptr, const usize al
 #define nil_new_array(ALLOC, T, COUNT) nil_alloc(ALLOC, nullptr, alignof(T), 0, sizeof(T) * (COUNT))
 #define nil_free(ALLOC, T, PTR) nil_alloc(ALLOC, PTR, alignof(T), sizeof(T), 0)
 #define nil_free_array(ALLOC, T, PTR, COUNT) nil_alloc(ALLOC, PTR, alignof(T), sizeof(T) * (COUNT), 0)
-
-// typedef const allocator* allocator_ref;
 
 // ============================================================================================================================== //
 //                                                              ARENA                                                             //

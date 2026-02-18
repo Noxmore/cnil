@@ -138,8 +138,6 @@ void* type_info_resolve_field_ptr_allocate(const type_info_field* field, void* s
 typedef struct type_registry type_registry;
 
 type_registry* type_registry_new();
-// Create a new type registry with an initial allocated size.
-type_registry* type_registry_new_with(usize reserve);
 
 void type_register(type_registry* reg, const type_info* type);
 usize type_registry_size(const type_registry* reg);

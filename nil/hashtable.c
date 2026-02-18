@@ -8,6 +8,7 @@
 #include <emmintrin.h>  // SSE2 intrinsics
 
 #include "math.h"
+#include "reflect.h"
 
 static bool pod_eq(const void* key_a, const void* key_b, usize key_size) {
 	return memcmp(key_a, key_b, key_size) == 0;
@@ -17,6 +18,32 @@ const nil_hashtable_policy nil_pod_hashtable_policy = {
 	.hash = nil_hash,
 	.eq = pod_eq,
 };
+
+static u64 passthrough_hash(const void* key, usize key_size) {
+	return nil_bytes_to_integer(key, key_size);
+}
+
+const nil_hashtable_policy nil_passthrough_hashtable_policy = {
+	.hash = passthrough_hash,
+	.eq = pod_eq,
+};
+
+static u64 policy_str_hash(const void* key, usize key_size) {
+	const str s = *(const str*)key;
+	return nil_hash(s.data, s.len);
+}
+
+static bool policy_str_eq(const void* key_a, const void* key_b, usize key_size) {
+	return str_eq(*(const str*)key_a, *(const str*)key_b);
+}
+
+const nil_hashtable_policy nil_str_hashtable_policy = {
+	.hash = policy_str_hash,
+	.eq = policy_str_eq,
+};
+
+const nil_hashtable_policy nil_string_hashtable_policy = nil_str_hashtable_policy; // This probably works.
+
 
 
 // Must be a power of 2.
@@ -148,6 +175,9 @@ static const nil_hashtable_policy* table_policy(const erased_hashtable* self) {
 
 // Returns -1 if the item could not be found.
 static usize table_get_index(const erased_hashtable* self, const void* key, usize entry_size, usize key_size) {
+	if (self->cap == 0)
+		return -1;
+
 	const auto policy = table_policy(self);
 
 	const u64 hash = policy->hash(key, key_size);
@@ -325,13 +355,13 @@ static bool next_index(const erased_hashtable* self, usize entry_size, const voi
 		index = (current - self->data) / entry_size + 1;
 	}
 
-	if (index > self->cap)
+	if (index >= self->cap)
 		return false;
 
 	while (ctrl_is_open(self->ctrl[index])) {
 		index++;
 
-		if (index > self->cap)
+		if (index >= self->cap)
 			return false;
 	}
 
